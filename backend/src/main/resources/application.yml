@@ -1,0 +1,122 @@
+spring:
+  application:
+    name: minitor-server
+  # Java 25 虚拟线程：读侧多为 IO 等待（ClickHouse / Redis），显著提升并发密度
+  threads:
+    virtual:
+      enabled: true
+  jackson:
+    default-property-inclusion: non_null
+    property-naming-strategy: SNAKE_CASE
+    serialization:
+      write-dates-as-timestamps: false
+  kafka:
+    bootstrap-servers: ${MINITOR_KAFKA:mq-01:9092,mq-02:9092}
+    consumer:
+      group-id: minitor-consumer
+      auto-offset-reset: latest
+      enable-auto-commit: false
+      max-poll-records: 500
+      properties:
+        spring.json.trusted.packages: "com.minitor.server.*"
+    listener:
+      type: batch
+      ack-mode: manual_immediate
+  data:
+    redis:
+      url: ${MINITOR_REDIS:redis://127.0.0.1:6379}
+
+server:
+  port: 8080
+  shutdown: graceful
+  servlet:
+    encoding:
+      charset: UTF-8
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+# ─────────────────────────── Minitor 自有配置 ───────────────────────────
+minitor:
+  timezone: Asia/Shanghai
+  dict-version: "2026.09"
+
+  # 读路径矩阵（§5.4）：三个只读账号 + 上报 + 管理，权限即数据源
+  store:
+    kind: clickhouse            # clickhouse | demo（demo profile 下自动切换）
+    agg:
+      url: jdbc:ch://ch-01:8123/minitor
+      username: grafana_dash
+      password: ${CH_DASH_PWD:}
+      # 聚合查询 profile：轻量、可并发
+      properties:
+        max_execution_time: 10
+        max_memory_usage: 2000000000
+    ods:
+      url: jdbc:ch://ch-01:8123/minitor
+      username: cs_detail
+      password: ${CH_CS_PWD:}
+      # 明细查询资源隔离（§9 风险项：客服直读 ODS 慢查询拖垮集群）
+      properties:
+        max_execution_time: 60
+        max_memory_usage: 6000000000
+        max_rows_to_read: 500000000
+
+  query:
+    # 强制时间窗：明细查询最长 90 天（错误码 40002）
+    detail-max-window-days: 90
+    # 小样本门槛：维度 × 分钟事件数 < 20 不评告警，落小时粒度（§6.3）
+    small-sample-floor: 20
+    # 跨度 > 7 天禁止 1m 粒度，服务端自动收敛
+    minute-grain-max-span-days: 7
+
+  ingest:
+    max-batch-size: 500
+    max-batch-bytes: 2097152
+    # Redis SETNX 幂等窗口（第一道防线）
+    dedupe-ttl-hours: 48
+
+  alert:
+    # RuleEvaluator 求值周期
+    eval-interval: 60s
+    # 峰值时段常量（Asia/Shanghai，工作日），字典可配
+    peak-windows: [ "07:00-10:00", "17:00-20:00" ]
+    escalate-after-minutes: 15
+    # P0 断流类规则禁止静默
+    non-silenceable-rules: [ "R01", "R03", "R04" ]
+
+  security:
+    # 演示用静态 token → 角色映射；生产走 SSO 换短时效用户态 token
+    tokens:
+      dash-token: DASH_READ
+      cs-token: CS_DETAIL
+      oncall-token: ALERT_OPS
+      ingest-token: INGEST
+      admin-token: ADMIN
+
+logging:
+  level:
+    com.minitor.server: INFO
+
+---
+# 演示 / 联调 profile：不依赖 ClickHouse、Kafka、Redis，直接以原型同源数据启动
+spring:
+  config:
+    activate:
+      on-profile: demo
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
+      - org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+minitor:
+  store:
+    kind: demo
