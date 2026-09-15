@@ -1,5 +1,5 @@
 services:
-  minitor-backend:
+  monitor-backend:
     image: ghcr.io/ivanmissu/monitor-order-monitoring-prototype-backend-dev:java25
     build:
       context: ./backend

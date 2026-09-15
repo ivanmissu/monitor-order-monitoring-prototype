@@ -1,10 +1,10 @@
 # syntax=docker/dockerfile:1.7
 
-# Development image: JDK 25 + Maven 3.9.12 + pre-warmed Minitor dependencies.
+# Development image: JDK 25 + Maven 3.9.12 + pre-warmed Monitor dependencies.
 FROM maven:3.9.12-eclipse-temurin-25
 
-LABEL org.opencontainers.image.title="Minitor backend development environment" \
-      org.opencontainers.image.description="JDK 25, Maven 3.9.12 and cached dependencies for the Minitor Spring Boot backend" \
+LABEL org.opencontainers.image.title="Monitor backend development environment" \
+      org.opencontainers.image.description="JDK 25, Maven 3.9.12 and cached dependencies for the Monitor Spring Boot backend" \
       org.opencontainers.image.source="https://github.com/ivanmissu/monitor-order-monitoring-prototype" \
       org.opencontainers.image.licenses="Apache-2.0"
 

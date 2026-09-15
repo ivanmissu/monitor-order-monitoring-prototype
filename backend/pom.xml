@@ -11,11 +11,11 @@
         <relativePath/>
     </parent>
 
-    <groupId>com.minitor</groupId>
-    <artifactId>minitor-server</artifactId>
+    <groupId>com.monitor</groupId>
+    <artifactId>monitor-server</artifactId>
     <version>1.4.0</version>
-    <name>minitor-server</name>
-    <description>Minitor · 旁路式订单业务监控服务（读侧查询 + 写侧事件接入）</description>
+    <name>monitor-server</name>
+    <description>Monitor · 旁路式订单业务监控服务（读侧查询 + 写侧事件接入）</description>
 
     <properties>
         <!-- Spring Boot 4 基线 Java 17，此处按要求锁定 Java 25（一等支持） -->

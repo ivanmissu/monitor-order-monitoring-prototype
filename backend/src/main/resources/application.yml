@@ -1,6 +1,6 @@
 spring:
   application:
-    name: minitor-server
+    name: monitor-server
   # Java 25 虚拟线程：读侧多为 IO 等待（ClickHouse / Redis），显著提升并发密度
   threads:
     virtual:
@@ -9,20 +9,20 @@ spring:
     default-property-inclusion: non_null
     property-naming-strategy: SNAKE_CASE
   kafka:
-    bootstrap-servers: ${MINITOR_KAFKA:mq-01:9092,mq-02:9092}
+    bootstrap-servers: ${MONITOR_KAFKA:mq-01:9092,mq-02:9092}
     consumer:
-      group-id: minitor-consumer
+      group-id: monitor-consumer
       auto-offset-reset: latest
       enable-auto-commit: false
       max-poll-records: 500
       properties:
-        spring.json.trusted.packages: "com.minitor.server.*"
+        spring.json.trusted.packages: "com.monitor.server.*"
     listener:
       type: batch
       ack-mode: manual_immediate
   data:
     redis:
-      url: ${MINITOR_REDIS:redis://127.0.0.1:6379}
+      url: ${MONITOR_REDIS:redis://127.0.0.1:6379}
 
 server:
   port: 8080
@@ -41,8 +41,8 @@ management:
       probes:
         enabled: true
 
-# ─────────────────────────── Minitor 自有配置 ───────────────────────────
-minitor:
+# ─────────────────────────── Monitor 自有配置 ───────────────────────────
+monitor:
   timezone: Asia/Shanghai
   dict-version: "2026.09"
 
@@ -50,7 +50,7 @@ minitor:
   store:
     kind: clickhouse            # clickhouse | demo（demo profile 下自动切换）
     agg:
-      url: jdbc:ch://ch-01:8123/minitor
+      url: jdbc:ch://ch-01:8123/monitor
       username: grafana_dash
       password: ${CH_DASH_PWD:}
       # 聚合查询 profile：轻量、可并发
@@ -58,7 +58,7 @@ minitor:
         max_execution_time: 10
         max_memory_usage: 2000000000
     ods:
-      url: jdbc:ch://ch-01:8123/minitor
+      url: jdbc:ch://ch-01:8123/monitor
       username: cs_detail
       password: ${CH_CS_PWD:}
       # 明细查询资源隔离（§9 风险项：客服直读 ODS 慢查询拖垮集群）
@@ -101,7 +101,7 @@ minitor:
 
 logging:
   level:
-    com.minitor.server: INFO
+    com.monitor.server: INFO
 
 ---
 # 演示 / 联调 profile：不依赖 ClickHouse、Kafka、Redis，直接以原型同源数据启动
@@ -113,6 +113,6 @@ spring:
     exclude:
       # Spring Boot 4 将 JDBC 自动装配拆入独立模块；demo 使用内存 Store。
       - org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration
-minitor:
+monitor:
   store:
     kind: demo

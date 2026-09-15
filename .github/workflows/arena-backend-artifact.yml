@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - arena/01a0a484-monitor-order-monitoring-proto
+      - arena/01a0a498-monitor-order-monitoring-proto
     paths:
       - "backend/**"
       - ".github/workflows/arena-backend-artifact.yml"
@@ -29,7 +29,7 @@ concurrency:
 
 env:
   ARTIFACT_BRANCH: arena-artifacts/backend-jar
-  JAR_PATH: backend/target/minitor-server-1.4.0.jar
+  JAR_PATH: backend/target/monitor-server-1.4.0.jar
 
 jobs:
   build:
@@ -63,7 +63,7 @@ jobs:
       - name: Upload runnable jar (web download)
         uses: actions/upload-artifact@v4
         with:
-          name: minitor-server-demo
+          name: monitor-server-demo
           path: ${{ env.JAR_PATH }}
           if-no-files-found: error
           retention-days: 7
@@ -79,7 +79,7 @@ jobs:
           set -Eeuo pipefail
 
           WORK="$(mktemp -d)"
-          cp "$JAR_PATH" "$WORK/minitor-server-demo.jar"
+          cp "$JAR_PATH" "$WORK/monitor-server-demo.jar"
 
           # 记录来源提交，便于核对产物与源码是否一致。
           cat >"$WORK/BUILD_INFO.txt" <<EOF
@@ -87,14 +87,14 @@ jobs:
           source_ref=${GITHUB_REF}
           run_id=${GITHUB_RUN_ID}
           built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          jar=minitor-server-demo.jar
+          jar=monitor-server-demo.jar
           java=25 (temurin, build); jdk4py 25.0.2.1 (sandbox, run)
           EOF
 
           cd "$WORK"
           git init -q
           git checkout -q -b "$ARTIFACT_BRANCH"
-          git add minitor-server-demo.jar BUILD_INFO.txt
+          git add monitor-server-demo.jar BUILD_INFO.txt
           git commit -q -m "build: demo jar from ${GITHUB_SHA}"
           git push -q --force \
             "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \

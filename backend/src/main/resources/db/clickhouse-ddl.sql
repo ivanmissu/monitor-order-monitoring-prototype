@@ -1,13 +1,13 @@
 -- ============================================================================
---  Minitor ClickHouse DDL
+--  Monitor ClickHouse DDL
 --  部署：1 分片 × 2 副本（8C/32G/500G SSD ×2）
 --  容量：≈250 万事件/天（10 万单 × 25 事件），ODS 压缩后 <100MB/天，180 天 <20GB
 -- ============================================================================
 
-CREATE DATABASE IF NOT EXISTS minitor;
+CREATE DATABASE IF NOT EXISTS monitor;
 
 -- ─────────────────────────── ODS 明细层（真相之源） ──────────────────────────
-CREATE TABLE IF NOT EXISTS minitor.ods_order_event
+CREATE TABLE IF NOT EXISTS monitor.ods_order_event
 (
     event_id        UInt64,
     event_type      LowCardinality(String),
@@ -35,7 +35,7 @@ TTL dt + INTERVAL 180 DAY
 SETTINGS index_granularity = 8192;
 
 -- 死信表：字典校验不通过的事件，不污染正式数据
-CREATE TABLE IF NOT EXISTS minitor.ods_dirty_event
+CREATE TABLE IF NOT EXISTS monitor.ods_dirty_event
 (
     dt          Date DEFAULT today(),
     received_at DateTime DEFAULT now(),
@@ -49,7 +49,7 @@ PARTITION BY dt ORDER BY (dt, reason, event_type)
 TTL dt + INTERVAL 30 DAY;
 
 -- T+1 对账缺口明细
-CREATE TABLE IF NOT EXISTS minitor.ods_state_gap
+CREATE TABLE IF NOT EXISTS monitor.ods_state_gap
 (
     dt                  Date,
     order_id            UInt64,
@@ -70,7 +70,7 @@ TTL dt + INTERVAL 180 DAY;
 -- 口径变更无需回刷、告警阈值只改字典不改管道。
 -- 例外：唯一数与分位数以「可合并状态列」入表（uniqCombinedState / quantilesTDigestState）。
 
-CREATE TABLE IF NOT EXISTS minitor.agg_5m
+CREATE TABLE IF NOT EXISTS monitor.agg_5m
 (
     minute                  DateTime,
     city_id                 UInt64,
@@ -145,7 +145,7 @@ ORDER BY (minute, city_id, seat_type, biz_line, cancel_by, cancel_stage, fault,
 TTL toDate(minute) + INTERVAL 180 DAY;
 
 -- agg_1m：仅主干列，服务分钟级告警，30 天，不回补
-CREATE TABLE IF NOT EXISTS minitor.agg_1m AS minitor.agg_5m
+CREATE TABLE IF NOT EXISTS monitor.agg_1m AS monitor.agg_5m
 ENGINE = ReplicatedAggregatingMergeTree('/clickhouse/tables/{shard}/agg_1m', '{replica}')
 PARTITION BY toDate(minute)
 ORDER BY (minute, city_id, seat_type, biz_line, cancel_by, cancel_stage, fault,
@@ -153,14 +153,14 @@ ORDER BY (minute, city_id, seat_type, biz_line, cancel_by, cancel_stage, fault,
 TTL toDate(minute) + INTERVAL 30 DAY;
 
 -- agg_1h / agg_1d：全量 + 状态列；2 年，资金相关 5 年
-CREATE TABLE IF NOT EXISTS minitor.agg_1h AS minitor.agg_5m
+CREATE TABLE IF NOT EXISTS monitor.agg_1h AS monitor.agg_5m
 ENGINE = ReplicatedAggregatingMergeTree('/clickhouse/tables/{shard}/agg_1h', '{replica}')
 PARTITION BY toYYYYMM(minute)
 ORDER BY (minute, city_id, seat_type, biz_line, cancel_by, cancel_stage, fault,
           fail_code, rule_id, api_id)
 TTL toDate(minute) + INTERVAL 2 YEAR;
 
-CREATE TABLE IF NOT EXISTS minitor.agg_1d AS minitor.agg_5m
+CREATE TABLE IF NOT EXISTS monitor.agg_1d AS monitor.agg_5m
 ENGINE = ReplicatedAggregatingMergeTree('/clickhouse/tables/{shard}/agg_1d', '{replica}')
 PARTITION BY toYYYYMM(minute)
 ORDER BY (minute, city_id, seat_type, biz_line, cancel_by, cancel_stage, fault,
@@ -168,7 +168,7 @@ ORDER BY (minute, city_id, seat_type, biz_line, cancel_by, cancel_stage, fault,
 TTL toDate(minute) + INTERVAL 5 YEAR;
 
 -- ─────────────────────────── 物化视图链 ods → 1m/5m → 1h → 1d ──────────────
-CREATE MATERIALIZED VIEW IF NOT EXISTS minitor.mv_ods_to_5m TO minitor.agg_5m AS
+CREATE MATERIALIZED VIEW IF NOT EXISTS monitor.mv_ods_to_5m TO monitor.agg_5m AS
 SELECT
     toStartOfFiveMinute(event_time)                                   AS minute,
     city_id,
@@ -230,7 +230,7 @@ SELECT
     quantilesTDigestState(0.5, 0.99)(
         toUInt32(dateDiff('second', event_time, ingest_time)))        AS ingest_delay_p,
     max(ingest_time)                                                  AS updated_at
-FROM minitor.ods_order_event
+FROM monitor.ods_order_event
 GROUP BY minute, city_id, seat_type, biz_line, cancel_by, cancel_stage, fault,
          fail_code, rule_id, api_id;
 
@@ -238,7 +238,7 @@ GROUP BY minute, city_id, seat_type, biz_line, cancel_by, cancel_stage, fault,
 -- 差异仅在时间函数（toStartOfHour / toDate）与状态列的 *Merge → *State 转换。
 
 -- ─────────────────────────── 系统表（元监控 / 布局 / 告警） ──────────────────
-CREATE TABLE IF NOT EXISTS minitor.system_link_health
+CREATE TABLE IF NOT EXISTS monitor.system_link_health
 (
     node_key     LowCardinality(String),
     node_label   String,
@@ -250,7 +250,7 @@ CREATE TABLE IF NOT EXISTS minitor.system_link_health
     sort_order   UInt8
 ) ENGINE = ReplacingMergeTree(heartbeat_at) ORDER BY node_key;
 
-CREATE TABLE IF NOT EXISTS minitor.system_pipeline_health
+CREATE TABLE IF NOT EXISTS monitor.system_pipeline_health
 (
     component    String,
     status       LowCardinality(String),
@@ -261,20 +261,20 @@ CREATE TABLE IF NOT EXISTS minitor.system_pipeline_health
     sort_order   UInt8
 ) ENGINE = ReplacingMergeTree(heartbeat_at) ORDER BY component;
 
-CREATE TABLE IF NOT EXISTS minitor.system_topology_layout
+CREATE TABLE IF NOT EXISTS monitor.system_topology_layout
 (
     node_id String, label String, sub String,
     x UInt16, y UInt16, w UInt16, h UInt16,
     kind LowCardinality(String), sort_order UInt8
 ) ENGINE = ReplacingMergeTree ORDER BY node_id;
 
-CREATE TABLE IF NOT EXISTS minitor.system_backfill_job
+CREATE TABLE IF NOT EXISTS monitor.system_backfill_job
 (
     job_id String, target_dt Date, status LowCardinality(String),
     started_at DateTime, finished_at Nullable(DateTime), rows_written UInt64
 ) ENGINE = ReplacingMergeTree(started_at) ORDER BY job_id;
 
-CREATE TABLE IF NOT EXISTS minitor.alert_event
+CREATE TABLE IF NOT EXISTS monitor.alert_event
 (
     alert_id          UInt64,
     rule_id           LowCardinality(String),
@@ -311,7 +311,7 @@ CREATE TABLE IF NOT EXISTS minitor.alert_event
 ) ENGINE = ReplacingMergeTree(updated_at)
 PARTITION BY toYYYYMM(fired_at) ORDER BY (alert_id);
 
-CREATE TABLE IF NOT EXISTS minitor.alert_silence
+CREATE TABLE IF NOT EXISTS monitor.alert_silence
 (
     silence_id       String,
     matchers         String,
@@ -326,24 +326,24 @@ CREATE TABLE IF NOT EXISTS minitor.alert_silence
 -- ─────────────────────────── 权限：权限即数据源 ──────────────────────────────
 CREATE USER IF NOT EXISTS grafana_dash IDENTIFIED BY '***'
     SETTINGS max_execution_time = 10, max_memory_usage = 2000000000;
-GRANT SELECT ON minitor.agg_1m  TO grafana_dash;
-GRANT SELECT ON minitor.agg_5m  TO grafana_dash;
-GRANT SELECT ON minitor.agg_1h  TO grafana_dash;
-GRANT SELECT ON minitor.agg_1d  TO grafana_dash;
-GRANT SELECT ON minitor.alert_event TO grafana_dash;
+GRANT SELECT ON monitor.agg_1m  TO grafana_dash;
+GRANT SELECT ON monitor.agg_5m  TO grafana_dash;
+GRANT SELECT ON monitor.agg_1h  TO grafana_dash;
+GRANT SELECT ON monitor.agg_1d  TO grafana_dash;
+GRANT SELECT ON monitor.alert_event TO grafana_dash;
 
 -- 客服明细账号：独立 profile + 行策略（按城市），越权由服务层直接 403
 CREATE USER IF NOT EXISTS cs_detail IDENTIFIED BY '***'
     SETTINGS max_execution_time = 60, max_memory_usage = 6000000000;
-GRANT SELECT ON minitor.ods_order_event TO cs_detail;
--- CREATE ROW POLICY cs_city ON minitor.ods_order_event
+GRANT SELECT ON monitor.ods_order_event TO cs_detail;
+-- CREATE ROW POLICY cs_city ON monitor.ods_order_event
 --     USING city_id IN (330100, 440100) TO cs_detail;
 
 CREATE USER IF NOT EXISTS alert_engine IDENTIFIED BY '***';
-GRANT SELECT ON minitor.agg_1m TO alert_engine;
-GRANT SELECT, INSERT, ALTER UPDATE ON minitor.alert_event TO alert_engine;
-GRANT SELECT, INSERT, ALTER DELETE ON minitor.alert_silence TO alert_engine;
+GRANT SELECT ON monitor.agg_1m TO alert_engine;
+GRANT SELECT, INSERT, ALTER UPDATE ON monitor.alert_event TO alert_engine;
+GRANT SELECT, INSERT, ALTER DELETE ON monitor.alert_silence TO alert_engine;
 
 CREATE USER IF NOT EXISTS biz_producer IDENTIFIED BY '***';
-GRANT INSERT ON minitor.ods_order_event TO biz_producer;
-GRANT INSERT ON minitor.ods_dirty_event TO biz_producer;
+GRANT INSERT ON monitor.ods_order_event TO biz_producer;
+GRANT INSERT ON monitor.ods_dirty_event TO biz_producer;

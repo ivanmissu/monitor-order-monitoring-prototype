@@ -1,5 +1,5 @@
 /**
- * Minitor 后端接口文档数据层
+ * Monitor 后端接口文档数据层
  * 按前端原型逐屏倒推：每个面板的字段 → 接口 → 存储/口径
  */
 export type Method = "GET" | "POST" | "PUT" | "DELETE" | "SSE";
@@ -18,10 +18,10 @@ export interface DocSection {
 }
 
 export const docMeta = {
-  title: "Minitor Server API",
+  title: "Monitor Server API",
   version: "v1.4.0",
   date: "2026-09-03",
-  base: "https://minitor.internal",
+  base: "https://monitor.internal",
   status: "评审稿",
   stats: { modules: 11, endpoints: 0, roles: 5, slo: "P99 ≤ 300ms" },
 };
@@ -39,20 +39,20 @@ export const docSections: DocSection[] = [
   /* ────────── 约定 ────────── */
   {
     id: "quickstart", no: "00", title: "快速开始", kind: "info",
-    lead: "所有读接口只查聚合层与明细层，不接受任何写业务库的语义；minitor 对业务系统只读。",
+    lead: "所有读接口只查聚合层与明细层，不接受任何写业务库的语义；monitor 对业务系统只读。",
     prose: [
-      "服务由 minitor-server 单进程提供两组角色：读侧查询 API（大盘 / 告警 / 明细）与写侧事件接入 API（ingest）。ClickHouse 是唯一存储真源，指标字典（dict_metric）是口径唯一真源。",
+      "服务由 monitor-server 单进程提供两组角色：读侧查询 API（大盘 / 告警 / 明细）与写侧事件接入 API（ingest）。ClickHouse 是唯一存储真源，指标字典（dict_metric）是口径唯一真源。",
       "前端首屏建议按「一次 bootstrap + 局部轮询」的模式调用：值班哨 20s、经营大盘 60s、明细查询手动触发。",
     ],
     code: [
       {
         title: "第一次调用：全平台完单率（1 小时粒度）", lang: "bash",
-        src: `curl -s "https://minitor.internal/api/v1/metric/query?\\
+        src: `curl -s "https://monitor.internal/api/v1/metric/query?\\
 metric=core.delivery_rate&biz_line=all&grain=1h&from=2026-09-03&to=2026-09-03" \\
-  -H "Authorization: Bearer $MINITOR_DASH_TOKEN"
+  -H "Authorization: Bearer $MONITOR_DASH_TOKEN"
 
-# → X-Minitor-Freshness: 2026-09-03T14:31:00+08:00
-# → X-Minitor-partial: true   // 当天分母仍在滚动（48h 匹配窗口）
+# → X-Monitor-Freshness: 2026-09-03T14:31:00+08:00
+# → X-Monitor-partial: true   // 当天分母仍在滚动（48h 匹配窗口）
 # → 响应中的 metric_version 需展示在图例，作为口径水印`,
       },
     ],
@@ -91,10 +91,10 @@ metric=core.delivery_rate&biz_line=all&grain=1h&from=2026-09-03&to=2026-09-03" \
         title: "必带响应头",
         head: ["Header", "示例", "说明"],
         rows: [
-          ["X-Minitor-Freshness", "2026-09-03T14:31:00+08:00", "本结果所覆盖的最新事件时间"],
-          ["X-Minitor-partial", "true", "1 = 未定盘（当天值仍会因迟到事件/回补变化），前端需打滚动标记"],
-          ["X-Minitor-Grain", "1m", "实际生效粒度；小样本自动降级时返回降级后的粒度"],
-          ["X-Minitor-Dict-Version", "2026.09", "指标字典版本，用于口径一致性核对"],
+          ["X-Monitor-Freshness", "2026-09-03T14:31:00+08:00", "本结果所覆盖的最新事件时间"],
+          ["X-Monitor-partial", "true", "1 = 未定盘（当天值仍会因迟到事件/回补变化），前端需打滚动标记"],
+          ["X-Monitor-Grain", "1m", "实际生效粒度；小样本自动降级时返回降级后的粒度"],
+          ["X-Monitor-Dict-Version", "2026.09", "指标字典版本，用于口径一致性核对"],
           ["Deprecation / Sunset", "true / 2026-12-31", "仅出现在待废弃字段/端点上"],
         ],
       },
@@ -159,7 +159,7 @@ metric=core.delivery_rate&biz_line=all&grain=1h&from=2026-09-03&to=2026-09-03" \
           ["cs_detail", "cs_detail", "ods_order_event（按 city_id 行策略）", "无", "客服工作台"],
           ["alert_ops", "alert_engine + 用户身份", "agg_* + 字典 + 告警事件表", "认领 / 关闭 / 静默 / 规则预览", "研发值班（IM 卡片与 Web 端）"],
           ["ingest", "biz_producer", "无查询权", "POST /api/v1/ingest/*", "业务系统埋点 SDK / HTTP 直连"],
-          ["admin", "minitor_admin", "全部", "字典新版本、规则阈值、回补任务、权限授予", "平台研发 / 口径评审"],
+          ["admin", "monitor_admin", "全部", "字典新版本、规则阈值、回补任务、权限授予", "平台研发 / 口径评审"],
         ],
       },
     ],
@@ -928,7 +928,7 @@ metric=core.delivery_rate&biz_line=all&grain=1h&from=2026-09-03&to=2026-09-03" \
         desc: "低流量 / 无 Kafka 环境的业务线可选直连；主推 Kafka topic（biz.order.event），两者落库与幂等逻辑一致。",
         params: [
           { n: "Content-Type", in: "header", t: "string", r: true, d: "application/json 或 application/x-ndjson（NDJSON 更省带宽）" },
-          { n: "X-Minitor-Batch-Seq", in: "header", t: "string", d: "同一发送端的批次序号，用于乱序与重复批次诊断" },
+          { n: "X-Monitor-Batch-Seq", in: "header", t: "string", d: "同一发送端的批次序号，用于乱序与重复批次诊断" },
         ],
         req: `{
   "events": [
@@ -1033,15 +1033,15 @@ data: {"ts":"2026-09-03T14:33:00+08:00","channel":"sentinel",
       },
       {
         method: "POST", path: "/api/v1/notify/webhook", title: "IM 通知出站（payload 合同）", role: "admin",
-        desc: "minitor → 飞书 / 企微 / 钉钉适配层的统一出站体（非对外读接口，前端与网关按此结构渲染告警卡片）。",
+        desc: "monitor → 飞书 / 企微 / 钉钉适配层的统一出站体（非对外读接口，前端与网关按此结构渲染告警卡片）。",
         resp: `{
   "card": {
     "level": "P0", "title": "预付成功率持续低于阈值",
     "metric_line": "91.80% vs 阈值 95.00%（-3.20pp）",
     "dimension": "全国 · 全部座型 · 顺风车", "duration": "持续 4 个周期",
     "links": [
-      { "text": "下钻面板", "url": "https://minitor.internal/redirect/drilldown?alert_id=4471" },
-      { "text": "指标口径", "url": "https://minitor.internal/dict/fund.prepay_success_rate?v=v3" },
+      { "text": "下钻面板", "url": "https://monitor.internal/redirect/drilldown?alert_id=4471" },
+      { "text": "指标口径", "url": "https://monitor.internal/dict/fund.prepay_success_rate?v=v3" },
       { "text": "Runbook",  "url": "https://wiki.internal/rb/pay-callback" }
     ],
     "actions": [ { "text": "认领", "api": "/api/v1/alerts/4471/ack" }, { "text": "静默 30min", "api": "/api/v1/silences" } ]
@@ -1149,9 +1149,9 @@ public class BizEventRelay {
 const buf = new EventBuffer({ maxCount: 500, maxBytes: 1_800_000, flushIntervalMs: 2000 });
 
 buf.onFlush = async (events) => {
-  const res = await fetch("https://minitor.internal/api/v1/ingest/events", {
+  const res = await fetch("https://monitor.internal/api/v1/ingest/events", {
     method: "POST",
-    headers: { Authorization: "Bearer " + process.env.MINITOR_INGEST_TOKEN,
+    headers: { Authorization: "Bearer " + process.env.MONITOR_INGEST_TOKEN,
                "Content-Type": "application/json",
                "Idempotency-Key": batchKey(events) },
     body: JSON.stringify({ events }),
@@ -1259,7 +1259,7 @@ export interface MetricDef { id: string; name: string; domain: string; type: "at
           ["权限即数据源", "五个 token 对应三只读账号（grafana_dash / cs_detail / alert_engine）+ ingest + admin"],
           ["PII 治理", "全链路只存 driver_id_hash；props 白名单 + 死信校验；客服导出写审计日志"],
           ["审计", "ack / resolve / silence / PUT 字典 / replay 全部落审计（操作人 + 前后值）"],
-          ["口径一致性", "所有响应带 metric_version 与 X-Minitor-Dict-Version，前端展示口径水印"],
+          ["口径一致性", "所有响应带 metric_version 与 X-Monitor-Dict-Version，前端展示口径水印"],
         ],
       },
     ],

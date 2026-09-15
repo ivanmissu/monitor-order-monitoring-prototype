@@ -63,13 +63,13 @@ jobs:
           IMAGE="${REGISTRY}/${IMAGE_NAME}:sha-${GITHUB_SHA}"
           docker pull "$IMAGE"
           docker run --detach --rm \
-            --name minitor-backend-image-test \
+            --name monitor-backend-image-test \
             --publish 127.0.0.1:8080:8080 \
             "$IMAGE"
 
           cleanup() {
-            docker logs minitor-backend-image-test 2>/dev/null || true
-            docker stop minitor-backend-image-test 2>/dev/null || true
+            docker logs monitor-backend-image-test 2>/dev/null || true
+            docker stop monitor-backend-image-test 2>/dev/null || true
           }
           trap cleanup EXIT
 
@@ -81,7 +81,7 @@ jobs:
               ready=1
               break
             fi
-            if ! docker inspect minitor-backend-image-test >/dev/null 2>&1; then
+            if ! docker inspect monitor-backend-image-test >/dev/null 2>&1; then
               echo "Container exited before becoming healthy"
               exit 1
             fi
