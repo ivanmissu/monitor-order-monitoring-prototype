@@ -22,7 +22,7 @@ Arena 沙箱是一个**受限网络环境**，与本地开发机不同：
 相关文件：
 
 - 构建工作流：`.github/workflows/arena-backend-artifact.yml`
-- 产物分支：`arena-artifacts/backend-jar`（内含 `minitor-server-demo.jar` 和 `BUILD_INFO.txt`）
+- 产物分支：`arena-artifacts/backend-jar`（内含 `monitor-server-demo.jar` 和 `BUILD_INFO.txt`）
 - 一键脚本：`scripts/arena-run-backend.sh`
 
 ---
@@ -68,11 +68,11 @@ JAVA_BIN="$(~/.jdk-venv/bin/python -c 'from jdk4py import JAVA; print(JAVA)')"
 ```bash
 # 手动触发（或直接 push 一次 backend 改动）
 gh workflow run arena-backend-artifact.yml \
-  --ref arena/01a0a484-monitor-order-monitoring-proto
+  --ref arena/01a0a498-monitor-order-monitoring-proto
 
 # 找到最近一次运行并等待完成
 RUN_ID="$(gh run list --workflow arena-backend-artifact.yml \
-  --branch arena/01a0a484-monitor-order-monitoring-proto \
+  --branch arena/01a0a498-monitor-order-monitoring-proto \
   --limit 1 --json databaseId --jq '.[0].databaseId')"
 gh run watch "$RUN_ID" --exit-status
 ```
@@ -84,7 +84,7 @@ gh run watch "$RUN_ID" --exit-status
 ```bash
 git fetch origin arena-artifacts/backend-jar
 mkdir -p backend/target
-git show FETCH_HEAD:minitor-server-demo.jar > backend/target/minitor-server-1.4.0.jar
+git show FETCH_HEAD:monitor-server-demo.jar > backend/target/monitor-server-1.4.0.jar
 git show FETCH_HEAD:BUILD_INFO.txt      # 核对来源提交、构建时间
 ```
 
@@ -92,7 +92,7 @@ git show FETCH_HEAD:BUILD_INFO.txt      # 核对来源提交、构建时间
 
 ```bash
 JAVA_BIN="$(~/.jdk-venv/bin/python -c 'from jdk4py import JAVA; print(JAVA)')"
-"$JAVA_BIN" -jar backend/target/minitor-server-1.4.0.jar \
+"$JAVA_BIN" -jar backend/target/monitor-server-1.4.0.jar \
   --spring.profiles.active=demo \
   --server.address=0.0.0.0 \
   --server.port=8080
@@ -128,7 +128,7 @@ Demo Token：`dash-token`(大盘只读) / `cs-token`(客服明细) / `oncall-tok
 不会。`backend/target/` 已在 `.gitignore` 中。jar 只存在于沙箱本地和产物分支。
 
 **Q：改了后端代码后怎么更新？**
-把改动推到本会话分支（`arena/01a0a484-monitor-order-monitoring-proto`）触发 CI 重新构建，
+把改动推到本会话分支（`arena/01a0a498-monitor-order-monitoring-proto`）触发 CI 重新构建，
 然后重跑脚本（或第 3–4 步）取回新 jar 重启。
 
 **Q：demo 模式需要 ClickHouse / Kafka / Redis 吗？**

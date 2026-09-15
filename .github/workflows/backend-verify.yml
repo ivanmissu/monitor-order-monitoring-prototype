@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - arena/01a0a3b4-monitor-order-monitoring-proto
+      - arena/01a0a498-monitor-order-monitoring-proto
     paths:
       - "backend/**"
       - ".github/workflows/backend-verify.yml"
@@ -46,8 +46,8 @@ jobs:
         run: |
           set -Eeuo pipefail
 
-          JAR="backend/target/minitor-server-1.4.0.jar"
-          LOG="${RUNNER_TEMP}/minitor-server.log"
+          JAR="backend/target/monitor-server-1.4.0.jar"
+          LOG="${RUNNER_TEMP}/monitor-server.log"
 
           java -jar "$JAR" --spring.profiles.active=demo >"$LOG" 2>&1 &
           SERVER_PID=$!

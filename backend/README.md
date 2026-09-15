@@ -1,7 +1,7 @@
-# minitor-server
+# monitor-server
 
-> Minitor 旁路式订单业务监控服务端 · **Java 25 + Spring Boot 4.1.1**
-> 实现文档：`../docs/minitor-api.md`（53 端点 / 11 接口域）
+> Monitor 旁路式订单业务监控服务端 · **Java 25 + Spring Boot 4.1.1**
+> 实现文档：`../docs/monitor-api.md`（53 端点 / 11 接口域）
 
 ---
 
@@ -62,7 +62,7 @@ curl -s -X POST localhost:8080/api/v1/ingest/events \
        "props":{"trip_duration_sec":4533}}]}' | jq
 ```
 
-演示 token → 角色映射见 `application.yml` 的 `minitor.security.tokens`。
+演示 token → 角色映射见 `application.yml` 的 `monitor.security.tokens`。
 
 ### 2.2 生产模式
 
@@ -92,14 +92,14 @@ docker compose -f ../compose.backend.yml up --build
 ## 3. 包结构
 
 ```
-com.minitor.server
-├── MinitorApplication          启动类（虚拟线程 + 定时任务）
+com.monitor.server
+├── MonitorApplication          启动类（虚拟线程 + 定时任务）
 ├── common/                     响应外壳、错误码、请求上下文与口径水印、幂等防线
 ├── security/                   Bearer token → 角色 → 行策略
 ├── domain/                     BizLine / Grain / TimeRange / Dims
 ├── dict/                       指标字典（口径唯一真源）+ 事件契约 + 漏斗定义
 ├── query/                      Metrics 模型 + AggQueryService（派生比率引擎）
-├── store/                      MinitorStore 契约 · ClickHouseStore(SQL) · DemoStore(内存)
+├── store/                      MonitorStore 契约 · ClickHouseStore(SQL) · DemoStore(内存)
 ├── service/                    Sentinel / Dashboard / Alert / Ingest 业务编排
 ├── alert/                      规则注册表 · 求值器 · 降噪四板斧 · SSE 总线 · IM 出站
 ├── ingest/                     事件信封 + 质量校验（白名单 / PII / 枚举）
@@ -123,8 +123,8 @@ com.minitor.server
 ### 4.2 口径水印
 
 `RequestContext` 在查询链路中收集新鲜度 / partial / 实际粒度，
-Filter 统一写入 `X-Minitor-Freshness`、`X-Minitor-partial`、`X-Minitor-Grain`、
-`X-Minitor-Dict-Version`，任何端点都自动携带，Controller 无需关心。
+Filter 统一写入 `X-Monitor-Freshness`、`X-Monitor-partial`、`X-Monitor-Grain`、
+`X-Monitor-Dict-Version`，任何端点都自动携带，Controller 无需关心。
 
 ### 4.3 告警链路
 

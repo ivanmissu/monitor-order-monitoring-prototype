@@ -154,7 +154,7 @@ export default function ApiDocs({ onExit }: { onExit: () => void }) {
           <div className="brand-mark"><Activity size={19} strokeWidth={2.5} /></div>
           <div>
             <strong>业务监控平台</strong>
-            <span>后端接口文档 · minitor-server API Specification</span>
+            <span>后端接口文档 · monitor-server API Specification</span>
           </div>
         </div>
         <div className="doc-top-mid">
@@ -208,13 +208,13 @@ export default function ApiDocs({ onExit }: { onExit: () => void }) {
           <CodeBlock
             lang="shell · 鉴权"
             src={`# 五类 token，前端按视图选凭据；越权维度返回 40301（不静默过滤）
-curl -H "Authorization: Bearer $MINITOR_DASH_TOKEN" \\
+curl -H "Authorization: Bearer $MONITOR_DASH_TOKEN" \\
      "${docMeta.base}/api/v1/overview/summary?metrics=core.delivery_rate"
 
 # 响应头携带口径水印，图例必须展示
-# X-Minitor-Freshness: 2026-09-03T14:31:00+08:00
-# X-Minitor-partial:    true
-# X-Minitor-Dict-Version: 2026.09`}
+# X-Monitor-Freshness: 2026-09-03T14:31:00+08:00
+# X-Monitor-partial:    true
+# X-Monitor-Dict-Version: 2026.09`}
           />
         </div>
       </div>
@@ -252,7 +252,7 @@ curl -H "Authorization: Bearer $MINITOR_DASH_TOKEN" \\
           <div className="doc-rail-foot">
             <BookOpen size={13} />
             <span>
-              文档 <code>docs/minitor-api.md</code>
+              文档 <code>docs/monitor-api.md</code>
               <br />实现 <code>backend/</code> · Spring Boot 4.1.1
             </span>
           </div>

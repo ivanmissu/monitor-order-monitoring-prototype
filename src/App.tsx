@@ -116,7 +116,7 @@ export default function App() {
       <aside className={`sidebar ${mobileNav ? "open" : ""}`}>
         <div className="brand">
           <div className="brand-mark"><Activity size={21} strokeWidth={2.5} /></div>
-          <div><strong>业务监控平台</strong><span>Minitor · 多业务线订单监控</span></div>
+          <div><strong>业务监控平台</strong><span>Monitor · 多业务线订单监控</span></div>
           <button className="mobile-close" onClick={() => setMobileNav(false)}><X size={18} /></button>
         </div>
 
@@ -743,7 +743,7 @@ function SystemView() {
         <div className="component-row head"><span>组件</span><span>状态</span><span>吞吐 / 延迟</span><span>最近心跳</span><span>备注</span></div>
         {[
           ["order-domain-topic (5 线)", "正常", "8,420 msg/s", "14:32:08", "lag 2,210"],
-          ["minitor-consumer ×4", "正常", "8,406 msg/s", "14:32:08", "本地缓冲 0"],
+          ["monitor-consumer ×4", "正常", "8,406 msg/s", "14:32:08", "本地缓冲 0"],
           ["ClickHouse replica-01", "正常", "写入 42ms", "14:32:07", "8C / 32G"],
           ["ClickHouse replica-02", "正常", "复制延迟 0.3s", "14:32:07", "8C / 32G"],
           ["RuleEvaluator", "正常", "48 条 / min", "14:32:00", "求值 328ms"],

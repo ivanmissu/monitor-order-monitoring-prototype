@@ -45,7 +45,7 @@ export const metricDefs: MetricDef[] = [
   { id: "fund.prepay_cnt", name: "预付成功单数", domain: "fund", type: "atomic", biz: ["all"], formula: "count(prepay_succeeded)", events: ["prepay_succeeded"], grain: "1m/5m/1h/1d", owner: "周岚", version: "v3", status: "online", usedIn: ["值班哨", "告警#2"], updatedAt: "2026-08-20", desc: "支付回调确认的预付成功总笔数，资金链路地基。" },
   { id: "fund.prepay_amount_sum", name: "预付金额合计", domain: "fund", type: "atomic", biz: ["all"], formula: "sum(amount @prepay_succeeded)，单位：分", events: ["prepay_succeeded"], grain: "1m/5m/1h/1d", owner: "周岚", version: "v3", status: "online", usedIn: ["经营大盘"], updatedAt: "2026-08-20", desc: "GTV 净额口径的加项，金额一律 Int64 分，展示层换算元。" },
   { id: "fund.settle_credited_cnt", name: "结算入账单数", domain: "fund", type: "atomic", biz: ["all"], formula: "count(settlement_credited)", events: ["settlement_credited"], grain: "5m/1h/1d", owner: "周岚", version: "v1", status: "online", usedIn: ["值班哨", "告警#3"], updatedAt: "2026-08-20", desc: "司机侧结算账单的入账笔数，P0 断流告警的对象。" },
-  { id: "fund.settle_overdue_cnt", name: "结算逾期单数", domain: "fund", type: "atomic", biz: ["all"], formula: "count(settlement_overdue)，由 minitor 扫描产出", events: ["settlement_overdue"], grain: "5m/1h/1d", owner: "林舟", version: "v1", status: "online", usedIn: ["值班哨", "告警#13"], updatedAt: "2026-08-25", desc: "到期未完成入账的结算单数，由监控侧定时扫描任务产出，非业务事件。" },
+  { id: "fund.settle_overdue_cnt", name: "结算逾期单数", domain: "fund", type: "atomic", biz: ["all"], formula: "count(settlement_overdue)，由 monitor 扫描产出", events: ["settlement_overdue"], grain: "5m/1h/1d", owner: "林舟", version: "v1", status: "online", usedIn: ["值班哨", "告警#13"], updatedAt: "2026-08-25", desc: "到期未完成入账的结算单数，由监控侧定时扫描任务产出，非业务事件。" },
   { id: "fund.withdraw_ok_cnt", name: "提现成功单数", domain: "fund", type: "atomic", biz: ["all"], formula: "count(withdraw_succeeded)", events: ["withdraw_succeeded"], grain: "5m/1h/1d", owner: "周岚", version: "v1", status: "online", usedIn: ["告警#12"], updatedAt: "2026-08-20", desc: "资金到账异步，T+1 定盘口径，当日为滚动值。" },
   { id: "risk.risk_hit_cnt", name: "风控规则命中数", domain: "risk", type: "atomic", biz: ["all"], formula: "count(risk_hit)，rule_id 为维度列", events: ["risk_hit"], grain: "1h/1d", owner: "严既白", version: "v1", status: "online", usedIn: ["风控观测"], updatedAt: "2026-08-30", desc: "风控规则引擎回调的命中总数，按规则 ID 拆分查看。" },
   { id: "risk.frozen_amount_sum", name: "冻结金额合计", domain: "risk", type: "atomic", biz: ["all"], formula: "sum(amount @risk_hit where action=freeze)", events: ["risk_hit"], grain: "1h/1d", owner: "严既白", version: "v1", status: "online", usedIn: ["风控观测"], updatedAt: "2026-08-30", desc: "action=freeze 的命中所冻结的资金总额（分）。" },
@@ -61,7 +61,7 @@ export const metricDefs: MetricDef[] = [
   { id: "designated.accept_timeout_rate", name: "代驾接单超时率", domain: "match", type: "derived", biz: ["designated"], formula: "timeout_cnt / designated_assigned_cnt", events: ["designated_assigned", "designated_timeout"], grain: "5m/1h", owner: "金路", version: "v1", status: "beta", usedIn: ["接口监控", "告警#6"], updatedAt: "2026-09-01", desc: "夜间高峰需要单独基线，字典声明 22:00–02:00 窗口独立阈值。", alarmExample: "代驾接单超时 · P1" },
   { id: "fund.prepay_success_rate", name: "预付成功率", domain: "fund", type: "derived", biz: ["all"], formula: "prepay_succeeded / (prepay_succeeded + prepay_failed)", events: ["prepay_succeeded", "prepay_failed"], grain: "1m/5m", owner: "周岚", version: "v3", status: "online", usedIn: ["值班哨", "告警#2"], updatedAt: "2026-08-20", desc: "1 分钟粒度实时求值，阈值告警 P0；fail_code 作为维度列可用于快速定位支付通道。", alarmExample: "预付成功率 <95% 持续 3min · P0" },
   { id: "fund.gtv_net", name: "净 GTV", domain: "fund", type: "derived", biz: ["all"], formula: "prepay_amount_sum − refund_amount_sum", events: ["prepay_succeeded", "refund_completed"], grain: "1h/1d", owner: "周岚", version: "v3", status: "online", usedIn: ["经营大盘"], updatedAt: "2026-08-20", desc: "单位分；分→元仅展示层换算；退款以完成事件入账日归属。" },
-  { id: "fund.settle_delay_rate", name: "结算延迟率", domain: "fund", type: "derived", biz: ["all"], formula: "settle_overdue_cnt / (credited + overdue)", events: ["settlement_credited", "settlement_overdue"], grain: "5m/1h", owner: "林舟", version: "v1", status: "online", usedIn: ["值班哨", "告警#13"], updatedAt: "2026-08-25", desc: "逾期由 minitor 扫描任务产出；链路故障时过期与入账同时断流，比率不失真。" },
+  { id: "fund.settle_delay_rate", name: "结算延迟率", domain: "fund", type: "derived", biz: ["all"], formula: "settle_overdue_cnt / (credited + overdue)", events: ["settlement_credited", "settlement_overdue"], grain: "5m/1h", owner: "林舟", version: "v1", status: "online", usedIn: ["值班哨", "告警#13"], updatedAt: "2026-08-25", desc: "逾期由 monitor 扫描任务产出；链路故障时过期与入账同时断流，比率不失真。" },
   { id: "core.avg_order_price", name: "客单价", domain: "fund", type: "derived", biz: ["all"], formula: "prepay_amount_sum / prepay_cnt", events: ["prepay_succeeded"], grain: "1d", owner: "周岚", version: "v2", status: "online", usedIn: ["经营大盘"], updatedAt: "2026-08-12", desc: "按业务线分别输出；顺风车含座型拆分的口径在字典 version 中登记。" },
   { id: "risk.risk_hit_rate", name: "风控命中率", domain: "risk", type: "derived", biz: ["all"], formula: "risk_hit_cnt / settle_credited_cnt（按 rule_id 展开）", events: ["risk_hit", "settlement_credited"], grain: "1h/1d", owner: "严既白", version: "v1", status: "beta", usedIn: ["风控观测", "告警#18"], updatedAt: "2026-09-01", desc: "同一条规则命中量环比增幅超过 3 倍触发 P2，防止规则上线误杀。" },
   { id: "exp.complaint_rate", name: "客诉率（7日）", domain: "exp", type: "derived", biz: ["all"], formula: "complaint_cnt / order_delivered_cnt，7 日滚动窗", events: ["complaint_submitted", "order_delivered"], grain: "1d", owner: "金路", version: "v1", status: "online", usedIn: ["履约质量", "告警#15"], updatedAt: "2026-08-02", desc: "单口径而非进线口径，字典中显式声明防止运营误读。" },
@@ -161,7 +161,7 @@ await emitBizEvent({
   {
     id: "http", label: "HTTP · 直连接入", lang: "bash",
     code: `# 低流量 / 无 Kafka 环境业务可选 HTTP 直连网关 (批量攒批 < 500 条)
-curl -X POST https://minitor.internal/api/v1/events \\
+curl -X POST https://monitor.internal/api/v1/events \\
   -H "Authorization: Bearer <TOKEN>" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -182,7 +182,7 @@ curl -X POST https://minitor.internal/api/v1/events \\
   {
     id: "query", label: "指标查询 API", lang: "bash",
     code: `# 派生比率不进存储, 查询期由分子/分母派生
-curl "https://minitor.internal/api/v1/metric/query\\
+curl "https://monitor.internal/api/v1/metric/query\\
 ?metric=core.delivery_rate&biz_line=carpool\\
 &grain=1h&from=2026-09-03&to=2026-09-03"
 

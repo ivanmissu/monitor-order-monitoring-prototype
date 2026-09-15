@@ -1,6 +1,6 @@
-# Minitor · 多业务线订单监控原型
+# Monitor · 多业务线订单监控原型
 
-Minitor 是一个**旁路式订单业务监控平台原型**，面向研发值班、运营、客服与风控人员，覆盖司机端、转单端、顺风车、代驾、接送机等业务线。仓库同时包含可交互的 React 前端、Spring Boot 服务端、ClickHouse 表结构以及完整的 API 设计文档。
+Monitor 是一个**旁路式订单业务监控平台原型**，面向研发值班、运营、客服与风控人员，覆盖司机端、转单端、顺风车、代驾、接送机等业务线。仓库同时包含可交互的 React 前端、Spring Boot 服务端、ClickHouse 表结构以及完整的 API 设计文档。
 
 > 当前前端使用仓库内的静态演示数据，可不启动服务端直接体验；服务端提供独立的 `demo` Profile，启动时无需 ClickHouse、Kafka 或 Redis。前后端请求尚未在前端代码中接通。
 
@@ -188,8 +188,8 @@ clickhouse-client --multiquery < src/main/resources/db/clickhouse-ddl.sql
 
 export CH_DASH_PWD='<聚合查询账号密码>'
 export CH_CS_PWD='<明细查询账号密码>'
-export MINITOR_KAFKA='mq-01:9092,mq-02:9092'
-export MINITOR_REDIS='redis://127.0.0.1:6379'
+export MONITOR_KAFKA='mq-01:9092,mq-02:9092'
+export MONITOR_REDIS='redis://127.0.0.1:6379'
 
 mvn spring-boot:run
 ```
@@ -225,7 +225,7 @@ mvn spring-boot:run
 │   ├── pom.xml                 # Maven 配置
 │   └── README.md               # 服务端实现说明
 ├── docs/
-│   └── minitor-api.md          # 完整 API 设计文档
+│   └── monitor-api.md          # 完整 API 设计文档
 ├── index.html
 ├── vite.config.ts
 ├── package.json
@@ -237,8 +237,8 @@ mvn spring-boot:run
 - 修改大盘、告警、订单时间线等演示数据：`src/data.ts`
 - 修改指标库内容：`src/metrics-data.ts`
 - 修改页面内 API 文档：`src/api-doc-data.ts`
-- 修改完整 Markdown 接口设计：`docs/minitor-api.md`
-- 修改服务端 Demo 数据：`backend/src/main/java/com/minitor/server/store/DemoStore.java`
+- 修改完整 Markdown 接口设计：`docs/monitor-api.md`
+- 修改服务端 Demo 数据：`backend/src/main/java/com/monitor/server/store/DemoStore.java`
 - 修改鉴权 Token 或基础设施连接：`backend/src/main/resources/application.yml`
 
 若要将前端接入服务端，建议先增加统一 API Client，并将当前静态数据逐步替换为 `/api/v1` 请求；开发环境可在 `vite.config.ts` 中配置 `/api` 反向代理，以避免跨域和浏览器端硬编码服务地址。
@@ -246,7 +246,7 @@ mvn spring-boot:run
 ## 相关文档
 
 - [服务端实现说明](backend/README.md)
-- [完整 API 设计文档](docs/minitor-api.md)
+- [完整 API 设计文档](docs/monitor-api.md)
 - 前端启动后可从侧边栏进入“接口文档”查看可搜索版本
 
 ## 常见问题

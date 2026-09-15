@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# arena-run-backend.sh — 在 Arena 沙箱启动 Minitor 后端 demo 服务。
+# arena-run-backend.sh — 在 Arena 沙箱启动 Monitor 后端 demo 服务。
 #
 # 方案：编译打包走 GitHub Actions（Temurin JDK 25），产物通过专用 git 分支带回沙箱，
 #       沙箱用 jdk4py 的 Java 25 运行时（JRE）启动 jar。详见 docs/arena-backend-runbook.md。
@@ -15,12 +15,12 @@
 set -Eeuo pipefail
 
 # --- 配置 -------------------------------------------------------------------
-BRANCH="arena/01a0a484-monitor-order-monitoring-proto"
+BRANCH="arena/01a0a498-monitor-order-monitoring-proto"
 ARTIFACT_BRANCH="arena-artifacts/backend-jar"
 WORKFLOW="arena-backend-artifact.yml"
 JDK4PY_VERSION="25.0.2.1"
 VENV="${HOME}/.jdk-venv"
-JAR_OUT="backend/target/minitor-server-1.4.0.jar"
+JAR_OUT="backend/target/monitor-server-1.4.0.jar"
 PORT="${PORT:-8080}"
 
 DO_BUILD=1
@@ -61,7 +61,7 @@ fi
 log "从 $ARTIFACT_BRANCH 取回产物 ..."
 git fetch origin "$ARTIFACT_BRANCH"
 mkdir -p "$(dirname "$JAR_OUT")"
-git show FETCH_HEAD:minitor-server-demo.jar > "$JAR_OUT"
+git show FETCH_HEAD:monitor-server-demo.jar > "$JAR_OUT"
 log "BUILD_INFO:"
 git show FETCH_HEAD:BUILD_INFO.txt | sed 's/^/    /'
 log "jar 大小: $(du -h "$JAR_OUT" | cut -f1)"
