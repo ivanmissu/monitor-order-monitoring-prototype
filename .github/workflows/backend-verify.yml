@@ -35,7 +35,11 @@ jobs:
           mvn -version
 
       - name: Build backend
-        run: mvn --batch-mode --no-transfer-progress -f backend/pom.xml clean package
+        run: |
+          mvn --batch-mode --no-transfer-progress \
+            -Dspring-boot.run.profiles=demo \
+            -f backend/pom.xml \
+            clean package
 
       - name: Start demo profile and verify APIs
         shell: bash
