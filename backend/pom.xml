@@ -35,36 +35,20 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
+        <!-- Boot 4 将 Jackson 从 Web starter 中拆出，服务端直接使用 ObjectMapper。 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-jackson</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
-        <!-- 存储：ClickHouse(JDBC) + Redis(幂等去重) -->
+        <!-- JDBC 抽象与连接池；demo profile 会禁用数据源自动装配 -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-jdbc</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-data-redis</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.clickhouse</groupId>
-            <artifactId>clickhouse-jdbc</artifactId>
-            <version>${clickhouse.version}</version>
-        </dependency>
-
-        <!-- 事件接入：Kafka 主通路 -->
-        <dependency>
-            <groupId>org.springframework.kafka</groupId>
-            <artifactId>spring-kafka</artifactId>
-        </dependency>
-
-        <!-- 字典缓存 -->
-        <dependency>
-            <groupId>com.github.ben-manes.caffeine</groupId>
-            <artifactId>caffeine</artifactId>
         </dependency>
 
         <dependency>
@@ -90,4 +74,63 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <!--
+          生产集成默认启用。运行 demo profile 时，Maven 根据同一个
+          spring-boot.run.profiles 属性切换到真正不依赖 ClickHouse、Kafka、Redis
+          的构建图，避免联调环境仍被生产中间件依赖阻塞。
+        -->
+        <profile>
+            <id>production-integrations</id>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
+            <dependencies>
+                <dependency>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-starter-data-redis</artifactId>
+                </dependency>
+                <dependency>
+                    <groupId>com.clickhouse</groupId>
+                    <artifactId>clickhouse-jdbc</artifactId>
+                    <version>${clickhouse.version}</version>
+                </dependency>
+                <dependency>
+                    <groupId>org.springframework.kafka</groupId>
+                    <artifactId>spring-kafka</artifactId>
+                </dependency>
+                <dependency>
+                    <groupId>com.github.ben-manes.caffeine</groupId>
+                    <artifactId>caffeine</artifactId>
+                </dependency>
+            </dependencies>
+        </profile>
+
+        <profile>
+            <id>demo-runtime</id>
+            <activation>
+                <property>
+                    <name>spring-boot.run.profiles</name>
+                    <value>demo</value>
+                </property>
+            </activation>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-compiler-plugin</artifactId>
+                        <configuration>
+                            <!-- 也兼容只带 Java 25 运行时的联调机：外置 javac 进程完成编译。 -->
+                            <fork>true</fork>
+                            <excludes>
+                                <exclude>**/engine/EventConsumer.java</exclude>
+                                <exclude>**/common/RedisIdempotencyStore.java</exclude>
+                            </excludes>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

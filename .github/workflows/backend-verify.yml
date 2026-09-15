@@ -1,0 +1,118 @@
+name: Backend verification
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - arena/01a0a3b4-monitor-order-monitoring-proto
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-verify.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-smoke-test:
+    name: JDK 25 build and demo smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+
+      - name: Show tool versions
+        run: |
+          java -version
+          mvn -version
+
+      - name: Build backend
+        run: |
+          mvn --batch-mode --no-transfer-progress \
+            -Dspring-boot.run.profiles=demo \
+            -f backend/pom.xml \
+            clean package
+
+      - name: Start demo profile and verify APIs
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          JAR="backend/target/minitor-server-1.4.0.jar"
+          LOG="${RUNNER_TEMP}/minitor-server.log"
+
+          java -jar "$JAR" --spring.profiles.active=demo >"$LOG" 2>&1 &
+          SERVER_PID=$!
+
+          cleanup() {
+            kill "$SERVER_PID" 2>/dev/null || true
+            wait "$SERVER_PID" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          ready=0
+          for _ in $(seq 1 60); do
+            if curl --fail --silent --show-error \
+              http://127.0.0.1:8080/actuator/health \
+              -o "${RUNNER_TEMP}/health.json"; then
+              ready=1
+              break
+            fi
+            if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+              echo "Backend exited before becoming healthy"
+              cat "$LOG"
+              exit 1
+            fi
+            sleep 1
+          done
+
+          if [ "$ready" -ne 1 ]; then
+            echo "Backend did not become healthy within 60 seconds"
+            cat "$LOG"
+            exit 1
+          fi
+
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer dash-token" \
+            http://127.0.0.1:8080/api/v1/sentinel/bootstrap \
+            -o "${RUNNER_TEMP}/sentinel.json"
+
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer cs-token" \
+            http://127.0.0.1:8080/api/v1/orders/CP20260903018462/events \
+            -o "${RUNNER_TEMP}/order-events.json"
+
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          tmp = Path(os.environ["RUNNER_TEMP"])
+          health = json.loads((tmp / "health.json").read_text())
+          sentinel = json.loads((tmp / "sentinel.json").read_text())
+          order_events = json.loads((tmp / "order-events.json").read_text())
+
+          assert health["status"] == "UP", health
+          assert sentinel["code"] == 0, sentinel
+          assert sentinel["data"]["link_health"]["nodes"], sentinel
+          assert sentinel["data"]["alerts"], sentinel
+          assert order_events["code"] == 0, order_events
+          assert order_events["data"]["order_id"] == "CP20260903018462", order_events
+          assert len(order_events["data"]["events"]) >= 1, order_events
+
+          print("Health:", health["status"])
+          print("Link nodes:", len(sentinel["data"]["link_health"]["nodes"]))
+          print("Active alerts:", len(sentinel["data"]["alerts"]))
+          print("Order events:", len(order_events["data"]["events"]))
+          PY
+
+          echo "--- Backend log tail ---"
+          tail -n 80 "$LOG"

@@ -8,8 +8,6 @@ spring:
   jackson:
     default-property-inclusion: non_null
     property-naming-strategy: SNAKE_CASE
-    serialization:
-      write-dates-as-timestamps: false
   kafka:
     bootstrap-servers: ${MINITOR_KAFKA:mq-01:9092,mq-02:9092}
     consumer:
@@ -113,10 +111,8 @@ spring:
       on-profile: demo
   autoconfigure:
     exclude:
-      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
-      - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
-      - org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
-      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+      # Spring Boot 4 将 JDBC 自动装配拆入独立模块；demo 使用内存 Store。
+      - org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration
 minitor:
   store:
     kind: demo

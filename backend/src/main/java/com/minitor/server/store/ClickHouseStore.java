@@ -9,7 +9,7 @@ import com.minitor.server.domain.Grain;
 import com.minitor.server.domain.TimeRange;
 import com.minitor.server.ingest.EventEnvelope;
 import com.minitor.server.query.Metrics;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -790,7 +790,7 @@ public class ClickHouseStore implements MinitorStore {
             return Map.of();
         }
         try {
-            return mapper.readValue(json, new com.fasterxml.jackson.core.type.TypeReference<>() {
+            return mapper.readValue(json, new tools.jackson.core.type.TypeReference<>() {
             });
         } catch (Exception ex) {
             return Map.of();

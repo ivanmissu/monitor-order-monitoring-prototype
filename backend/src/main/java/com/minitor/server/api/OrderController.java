@@ -79,7 +79,7 @@ public class OrderController {
         RequestContext.freshness(store.freshness());
 
         return ApiResponse.ok(new OrderView(s.orderId(), s.bizLine(), s.status(), s.statusLabel(),
-                s.cityId(), s.cityName(), s.seatType(), s.amountFen(), s.driverIdHashMasked(),
+                s.cityId(), s.cityName(), s.seatType(), s.amountFen(), s.driverHashMasked(),
                 s.tripId(), s.dt().toString(), s.eventCount(),
                 new Completeness(s.completeness(), s.expectedNodes(),
                         s.expectedNodes() - s.missing().size(), s.missing()),
@@ -176,8 +176,8 @@ public class OrderController {
         p.assertScope("ods");
         response.setContentType("application/x-ndjson");
         response.setCharacterEncoding("UTF-8");
-        com.fasterxml.jackson.databind.ObjectMapper mapper =
-                new com.fasterxml.jackson.databind.ObjectMapper();
+        tools.jackson.databind.ObjectMapper mapper =
+                new tools.jackson.databind.ObjectMapper();
         try (PrintWriter w = response.getWriter()) {
             for (MinitorStore.OrderEventRow r : store.orderEvents(orderId, resolveWindow(from, to))) {
                 w.write(mapper.writeValueAsString(r));
