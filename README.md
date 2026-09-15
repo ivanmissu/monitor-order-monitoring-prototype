@@ -168,6 +168,16 @@ docker compose -f compose.backend.yml up --build
 
 > Docker 镜像存放在远程 GHCR 才能跨机器或新 Session 复用；仅存在于本机 Docker daemon 的镜像不会随临时环境自动保留。
 
+### 5. 在 Arena 沙箱启动服务端
+
+Arena 沙箱没有 JDK/Maven/Docker，出网也受限。这里的方案是：**编译打包走 GitHub Actions（Temurin JDK 25），产物经专用 git 分支带回沙箱，再用 PyPI 的 `jdk4py`（Java 25 运行时）启动 jar**。
+
+```bash
+bash scripts/arena-run-backend.sh
+```
+
+一步到位：安装 `jdk4py==25.0.2.1` → 触发/等待 CI 构建 → 用 git 取回 jar → 绑定 `0.0.0.0:8080` 启动。完整原理与手动分步、排障见 [Arena 后端启动手册](docs/arena-backend-runbook.md)。
+
 ## 生产模式服务端
 
 生产 Profile 默认连接 ClickHouse，并可使用 Kafka 和 Redis。启动前先创建 ClickHouse 表：
