@@ -6,6 +6,7 @@ import {
   Search, Terminal, X,
 } from "lucide-react";
 import { type BizLine, bizLines } from "./data";
+import { useApi } from "./api";
 import {
   type MetricDef, type MetricDomain, metricDefs, domainMeta, typeMeta,
   eventEnvelopeJson, codeSamples, integrationSteps,
@@ -50,23 +51,33 @@ export default function MetricLibrary({ biz }: { biz: BizLine }) {
   );
   const [detailOpen, setDetailOpen] = useState(true);
   const [codeTab, setCodeTab] = useState("java");
+  type MetricRow = { id: string; name: string; domain: MetricDomain; type: MetricDef["type"]; biz_lines: BizLine[]; formula: string; source_events: string[]; grains: string[]; version: string; status: string; owner: string; updated_at: string; used_in: string[]; alarm_count: number };
+  const metricsApi = useApi<{ items: MetricRow[]; stats: { total: number; atomic: number; derived: number; tech: number; biz_lines: number } }>("/api/v1/dict/metrics?page_size=100");
+  const sourceMetrics: MetricDef[] = metricsApi.data?.items.map(m => ({
+    id: m.id, name: m.name, domain: m.domain, type: m.type, biz: m.biz_lines, formula: m.formula,
+    events: m.source_events, grain: m.grains.join("/"), owner: m.owner, version: m.version,
+    status: m.status === "online" ? "online" : "beta", usedIn: m.used_in,
+    updatedAt: m.updated_at?.slice(0, 10), desc: `指标口径由服务端字典提供；当前公式：${m.formula}`,
+    alarmExample: m.alarm_count ? `当前关联 ${m.alarm_count} 条告警规则` : undefined,
+  })) || metricDefs;
 
   const currentBizLabel = bizLines.find(b => b.id === biz)?.label || "全平台";
   const list = useMemo(() => {
-    let rows = metricDefs;
+    let rows = sourceMetrics;
     if (domain !== "all") rows = rows.filter(m => m.domain === domain);
     if (biz !== "all") rows = rows.filter(m => m.biz.includes(biz) || m.biz.includes("all"));
     const kw = q.trim().toLowerCase();
     if (kw) rows = rows.filter(m => m.name.includes(kw) || m.id.toLowerCase().includes(kw));
     return rows;
-  }, [domain, biz, q]);
+  }, [domain, biz, q, sourceMetrics]);
 
   const stats = useMemo(() => {
+    if (metricsApi.data) return { ...metricsApi.data.stats, biz: metricsApi.data.stats.biz_lines };
     const atomic = metricDefs.filter(m => m.type === "atomic").length;
     const derived = metricDefs.filter(m => m.type === "derived").length;
     const tech = metricDefs.filter(m => m.type === "tech").length;
-    return { total: metricDefs.length, atomic, derived, tech, biz: bizLines.length - 1 };
-  }, []);
+    return { total: metricDefs.length, atomic, derived, tech, biz: bizLines.length - 1, biz_lines: bizLines.length - 1 };
+  }, [metricsApi.data]);
 
   const activeSample = codeSamples.find(s => s.id === codeTab) || codeSamples[0];
 

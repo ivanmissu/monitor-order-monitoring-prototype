@@ -15,6 +15,11 @@ export default defineConfig({
     host: "0.0.0.0",
     // 允许 Arena 容器中的在线预览域名访问开发服务器。
     allowedHosts: [".e2b.app"],
+    // 浏览器只访问同源地址，由 Vite 转发到 Spring Boot，兼容本地与 Arena 预览域名。
+    proxy: {
+      "/api": { target: "http://127.0.0.1:8080", changeOrigin: true },
+      "/actuator": { target: "http://127.0.0.1:8080", changeOrigin: true },
+    },
   },
   resolve: {
     alias: {
