@@ -1,8 +1,15 @@
 name: Arena backend artifact
 
-# 在 GitHub Actions 上用 Temurin JDK 25 编译打包后端 demo jar，
-# 并把可运行产物作为 artifact 上传。Arena 沙箱只安装 jdk4py（Java 25 JRE，
-# 无 javac），因此编译打包放在 CI 完成，沙箱只负责下载产物并运行。
+# 在 GitHub Actions 上用 Temurin JDK 25 编译打包后端 demo jar。
+#
+# Arena 沙箱只安装 jdk4py（Java 25 JRE，无 javac），因此编译打包放在 CI 完成，
+# 沙箱只负责取回产物并运行。
+#
+# 注意：普通 upload-artifact 的下载走 Azure blob（*.blob.core.windows.net），
+# 该域名在 Arena 沙箱被防火墙拦截，无法下载。GitHub Releases 资源域名同样不可达。
+# 沙箱内可达的只有 github.com / codeload.github.com（即 git 协议），
+# 因此这里额外把 jar 提交并强制推送到专用产物分支 `arena-artifacts/backend-jar`，
+# 沙箱通过 `git fetch` 取回。同时保留 upload-artifact 便于在 GitHub 网页端下载。
 
 on:
   workflow_dispatch:
@@ -14,11 +21,15 @@ on:
       - ".github/workflows/arena-backend-artifact.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: arena-backend-artifact-${{ github.ref }}
   cancel-in-progress: true
+
+env:
+  ARTIFACT_BRANCH: arena-artifacts/backend-jar
+  JAR_PATH: backend/target/minitor-server-1.4.0.jar
 
 jobs:
   build:
@@ -49,10 +60,43 @@ jobs:
             -f backend/pom.xml \
             clean package
 
-      - name: Upload runnable jar
+      - name: Upload runnable jar (web download)
         uses: actions/upload-artifact@v4
         with:
           name: minitor-server-demo
-          path: backend/target/minitor-server-1.4.0.jar
+          path: ${{ env.JAR_PATH }}
           if-no-files-found: error
           retention-days: 7
+
+      - name: Publish jar to artifact branch (git-reachable)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GIT_AUTHOR_NAME: github-actions[bot]
+          GIT_AUTHOR_EMAIL: github-actions[bot]@users.noreply.github.com
+          GIT_COMMITTER_NAME: github-actions[bot]
+          GIT_COMMITTER_EMAIL: github-actions[bot]@users.noreply.github.com
+        run: |
+          set -Eeuo pipefail
+
+          WORK="$(mktemp -d)"
+          cp "$JAR_PATH" "$WORK/minitor-server-demo.jar"
+
+          # 记录来源提交，便于核对产物与源码是否一致。
+          cat >"$WORK/BUILD_INFO.txt" <<EOF
+          source_commit=${GITHUB_SHA}
+          source_ref=${GITHUB_REF}
+          run_id=${GITHUB_RUN_ID}
+          built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          jar=minitor-server-demo.jar
+          java=25 (temurin, build); jdk4py 25.0.2.1 (sandbox, run)
+          EOF
+
+          cd "$WORK"
+          git init -q
+          git checkout -q -b "$ARTIFACT_BRANCH"
+          git add minitor-server-demo.jar BUILD_INFO.txt
+          git commit -q -m "build: demo jar from ${GITHUB_SHA}"
+          git push -q --force \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            "HEAD:refs/heads/${ARTIFACT_BRANCH}"
+          echo "Pushed jar to branch ${ARTIFACT_BRANCH}"
