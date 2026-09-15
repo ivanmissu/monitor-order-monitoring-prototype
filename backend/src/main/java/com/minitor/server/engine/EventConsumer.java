@@ -1,6 +1,6 @@
 package com.minitor.server.engine;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import com.minitor.server.ingest.EventEnvelope;
 import com.minitor.server.service.IngestService;
 import org.slf4j.Logger;

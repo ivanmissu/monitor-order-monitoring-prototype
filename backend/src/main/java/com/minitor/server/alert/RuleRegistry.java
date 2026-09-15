@@ -1,5 +1,6 @@
 package com.minitor.server.alert;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.minitor.server.common.ApiException;
 import com.minitor.server.domain.Dims;
 import com.minitor.server.domain.Grain;
@@ -29,7 +30,9 @@ public class RuleRegistry {
     public record Rule(String ruleId, String name, Dims.AlertLevel level, Dims.RuleType type,
                        Grain grain, String metricId, String comparator, double threshold,
                        int periodsRequired, boolean enabled, List<String> dimensions,
-                       boolean holidayExempt, List<String> notify, String runbook, String expr) {
+                       boolean holidayExempt,
+                       @JsonProperty("notify") List<String> notifyChannels,
+                       String runbook, String expr) {
 
         /** 判定单点是否越界。 */
         public boolean breached(double value) {
@@ -44,7 +47,8 @@ public class RuleRegistry {
 
     public record RuleView(String ruleId, String name, String level, String type, String grain,
                            String expr, boolean enabled, String metric, String metricVersion,
-                           List<String> notify, int slaMin, Map<String, Object> stats7d,
+                           @JsonProperty("notify") List<String> notifyChannels,
+                           int slaMin, Map<String, Object> stats7d,
                            List<String> dimensions, int smallSampleFloor) {
     }
 
@@ -147,7 +151,7 @@ public class RuleRegistry {
             stats.put("avg_ack_sec", 168);
             out.add(new RuleView(r.ruleId(), r.name(), r.level().name(),
                     r.type().name().toLowerCase(), r.grain().id(), r.expr(), r.enabled(),
-                    r.metricId(), "v1", r.notify(), r.level().slaMinutes(), stats,
+                    r.metricId(), "v1", r.notifyChannels(), r.level().slaMinutes(), stats,
                     r.dimensions(), 20));
         }
         return out;

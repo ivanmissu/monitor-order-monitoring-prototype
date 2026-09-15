@@ -135,7 +135,7 @@ public class AlertController {
         RuleRegistry.Rule updated = rules.upsert(new RuleRegistry.Rule(base.ruleId(), base.name(),
                 base.level(), base.type(), base.grain(), base.metricId(), base.comparator(),
                 threshold, base.periodsRequired(), base.enabled(), base.dimensions(),
-                base.holidayExempt(), base.notify(), base.runbook(), base.expr()));
+                base.holidayExempt(), base.notifyChannels(), base.runbook(), base.expr()));
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("rule_id", updated.ruleId());
         out.put("threshold", updated.threshold());

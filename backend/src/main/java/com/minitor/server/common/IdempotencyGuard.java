@@ -1,7 +1,6 @@
 package com.minitor.server.common;
 
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
@@ -25,11 +24,11 @@ public class IdempotencyGuard {
     private static final String EVENT_PREFIX = "minitor:evt:";
     private static final String CMD_PREFIX = "minitor:cmd:";
 
-    private final ObjectProvider<StringRedisTemplate> redisProvider;
+    private final ObjectProvider<IdempotencyStore> storeProvider;
     private final Map<String, String> fallback = new ConcurrentHashMap<>();
 
-    public IdempotencyGuard(ObjectProvider<StringRedisTemplate> redisProvider) {
-        this.redisProvider = redisProvider;
+    public IdempotencyGuard(ObjectProvider<IdempotencyStore> storeProvider) {
+        this.storeProvider = storeProvider;
     }
 
     /**
@@ -50,11 +49,16 @@ public class IdempotencyGuard {
     }
 
     private boolean setIfAbsent(String key, String value, Duration ttl) {
-        StringRedisTemplate redis = redisProvider.getIfAvailable();
-        if (redis == null) {
+        IdempotencyStore store = storeProvider.getIfAvailable();
+        Boolean stored = store == null ? null : store.setIfAbsent(key, value, ttl);
+        if (stored == null) {
             return fallback.putIfAbsent(key, value) == null;
         }
-        Boolean ok = redis.opsForValue().setIfAbsent(key, value, ttl);
-        return Boolean.TRUE.equals(ok);
+        return stored;
+    }
+
+    /** 可选的生产幂等存储；返回 null 表示当前存储未装配，调用方退化到本地 Map。 */
+    public interface IdempotencyStore {
+        Boolean setIfAbsent(String key, String value, Duration ttl);
     }
 }
