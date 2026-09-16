@@ -4,7 +4,7 @@ import {
   Activity, ArrowLeft, BookOpen, Check, ChevronDown, ChevronRight, Copy,
   Database, Info, Layers, Search, Server, Terminal, X,
 } from "lucide-react";
-import { docSections, docMeta, type Endpoint, type Method } from "./api-doc-data";
+import { docSections, docMeta, type Endpoint, type Method } from "./data/api-doc-data";
 
 const METHOD_COLOR: Record<Method, string> = {
   GET: "#3587e7", POST: "#6558d3", PUT: "#e0923f", DELETE: "#dc5a58", SSE: "#25a579",
@@ -90,7 +90,7 @@ function EndpointCard({ ep, open, onToggle }: { ep: Endpoint; open: boolean; onT
 
 
 
-export default function ApiDocs({ onExit }: { onExit: () => void }) {
+export function ApiDocsPage({ onExit }: { onExit: () => void }) {
   const totalEndpoints = useMemo(() => docSections.reduce((n, s) => n + (s.endpoints?.length || 0), 0), []);
   const [methods, setMethods] = useState<Method[]>([]);
   const [q, setQ] = useState("");
@@ -168,13 +168,13 @@ export default function ApiDocs({ onExit }: { onExit: () => void }) {
           <span className="doc-chip">版本 {docMeta.version}</span>
           <span className="doc-chip amber">{docMeta.status}</span>
           <span className="doc-chip muted">{docMeta.date}</span>
-          <button className="doc-back" onClick={onExit}><ArrowLeft size={15} />返回原型</button>
+          <button className="doc-back" onClick={onExit}><ArrowLeft size={15} />返回平台</button>
         </div>
       </header>
 
       <div className="doc-hero">
         <div className="doc-hero-main">
-          <p className="doc-kicker">SPEC · 按前端原型逐屏倒推 · 1 份契约</p>
+          <p className="doc-kicker">SPEC · 按监控视图逐屏梳理 · 1 份契约</p>
           <h1>旁路监控的<br />读写两侧接口合同</h1>
           <p className="doc-lead">
             读侧只查 ClickHouse 聚合层与事件明细层，写侧只接收领域事件。比率不落库、口径不硬编码、权限即数据源——
@@ -323,11 +323,11 @@ curl -H "Authorization: Bearer $MONITOR_DASH_TOKEN" \\
           <footer className="doc-foot">
             <Layers size={14} />
             <span>
-              文档与前端原型同源：新增面板时先在此登记端点，再实现。字段冻结后只加不改。
+              文档与前端应用同源：新增面板时先在此登记端点，再实现。字段冻结后只加不改。
               服务端实现见 <code>backend/</code>（Java 25 · Spring Boot 4.1.1），
               零依赖启动：<code>mvn spring-boot:run -Dspring-boot.run.profiles=demo</code>
             </span>
-            <button onClick={onExit}>回到原型验证<ChevronRight size={13} /></button>
+            <button onClick={onExit}>回到平台验证<ChevronRight size={13} /></button>
           </footer>
         </main>
       </div>

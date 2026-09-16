@@ -1,4 +1,4 @@
-import type { BizLine } from "./data";
+import type { BizLine } from "@/entities/business/model";
 
 export type MetricDomain = "supply" | "match" | "fulfill" | "fund" | "risk" | "exp" | "link" | "api";
 export type MetricType = "atomic" | "derived" | "tech";

@@ -1,6 +1,6 @@
 /**
  * Monitor 后端接口文档数据层
- * 按前端原型逐屏倒推：每个面板的字段 → 接口 → 存储/口径
+ * 按监控视图逐屏梳理：每个面板的字段 → 接口 → 存储/口径
  */
 export type Method = "GET" | "POST" | "PUT" | "DELETE" | "SSE";
 export type Role = "dash_read" | "cs_detail" | "alert_ops" | "ingest" | "admin";
@@ -59,7 +59,7 @@ metric=core.delivery_rate&biz_line=all&grain=1h&from=2026-09-03&to=2026-09-03" \
     tables: [
       {
         title: "前端能力 → 后端接口速查",
-        head: ["原型能力", "接口", "刷新策略"],
+        head: ["前端能力", "接口", "刷新策略"],
         rows: [
           ["业务线切换器（6 值）", "GET /api/v1/dict/biz-lines", "启动一次，缓存 1h"],
           ["KPI 指标带 / 数值卡", "GET /api/v1/overview/summary", "20s 轮询 + ETag"],
@@ -1054,7 +1054,7 @@ data: {"ts":"2026-09-03T14:33:00+08:00","channel":"sentinel",
   },
   {
     id: "mapping", no: "15", title: "页面 ↔ 接口映射", kind: "info",
-    lead: "按原型逐屏对齐：每个面板的请求组合、加载顺序、刷新与降级策略。",
+    lead: "按监控视图逐屏对齐：每个面板的请求组合、加载顺序、刷新与降级策略。",
     tables: [
       {
         title: "01 值班哨 / 02 经营大盘 / 03 履约质量",

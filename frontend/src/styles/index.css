@@ -575,3 +575,6 @@
 .conn-badge.demo{background:#e0923f1f;color:#b9772c}
 .conn-badge.demo i{background:#e0923f}
 @keyframes conn-pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* async route loading */
+.page-loading{min-height:180px;display:grid;place-items:center;color:#777884;font-size:12px}
