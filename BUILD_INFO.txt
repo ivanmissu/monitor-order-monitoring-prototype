@@ -1,0 +1,6 @@
+source_commit=3ca96aee69049599c55cfa62af6d9c9cd8081492
+source_ref=refs/heads/main
+run_id=35065677522
+built_at=2026-09-16T06:52:31Z
+jar=business-system-demo.jar
+java=25 (temurin, build); jdk4py 25.0.2.1 (sandbox, run)
