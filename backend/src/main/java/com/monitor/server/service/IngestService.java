@@ -118,6 +118,21 @@ public class IngestService {
         // ③ 写 ODS（ReplacingMergeTree 为第二道防线）
         int written = store.insertEvents(toWrite);
 
+        if (props.getIngest().isLogEvents()) {
+            Map<String, String> statusByEventId = new LinkedHashMap<>();
+            for (EventResult result : results) {
+                statusByEventId.put(String.valueOf(result.eventId()),
+                        result.status() + (result.reason() == null ? "" : "/" + result.reason()));
+            }
+            for (EventEnvelope event : raw) {
+                log.info("INGEST event_id={} event_type={} order_id={} biz_line={} status={}",
+                        event.eventId(), event.eventType(), event.orderId(), event.bizLine(),
+                        statusByEventId.getOrDefault(String.valueOf(event.eventId()), "unknown"));
+            }
+            log.info("INGEST batch producer={} received={} accepted={} duplicated={} rejected={} written={}",
+                    producer, raw.size(), written, duplicated, dirty.size(), written);
+        }
+
         return new IngestResult(raw.size(), written, duplicated, dirty.size(), results,
                 receivedAt, System.currentTimeMillis() - started);
     }
