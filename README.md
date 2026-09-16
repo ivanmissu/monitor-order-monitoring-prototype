@@ -168,10 +168,11 @@ docker run --rm -p 8080:8080 \
   ghcr.io/ivanmissu/monitor-order-monitoring-prototype-backend-dev:java25
 ```
 
-也可以从当前代码构建并通过 Compose 启动：
+也可以从后端目录构建镜像并启动：
 
 ```bash
-docker compose -f compose.backend.yml up --build
+docker build -t monitor-backend ./backend
+docker run --rm -p 8080:8080 monitor-backend
 ```
 
 镜像启动后访问 <http://localhost:8080>，健康检查仍为 <http://localhost:8080/actuator/health>。如果 GHCR Package 保持私有，需要先使用具备 `read:packages` 权限的 GitHub 凭据执行 `docker login ghcr.io`；也可以在 Package 设置中将其改为 Public，后续即可匿名拉取。
@@ -243,9 +244,9 @@ mvn spring-boot:run
 │   ├── pom.xml                 # Maven 配置
 │   └── README.md               # 服务端实现说明
 ├── docs/
+│   ├── arena-backend-runbook.md
 │   └── monitor-api.md          # 完整 API 设计文档
-├── scripts/                    # 沙箱/CI 辅助脚本
-└── compose.backend.yml         # 后端开发镜像编排
+└── scripts/                    # 沙箱/CI 辅助脚本
 ```
 
 ## 数据与二次开发

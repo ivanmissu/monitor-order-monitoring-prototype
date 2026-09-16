@@ -4,7 +4,8 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - arena/01a0a822-monitor-order-monitoring-proto
+      - main
+      - 'arena/**'
     paths:
       - "backend/**"
       - ".github/workflows/backend-verify.yml"
