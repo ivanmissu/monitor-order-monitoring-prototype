@@ -1,21 +1,8 @@
-// ── Business Lines ──
-export type BizLine = "all" | "driver" | "transfer" | "carpool" | "designated" | "airport";
-export const bizLines: { id: BizLine; label: string; short: string; color: string }[] = [
-  { id: "all", label: "全平台总览", short: "全平台", color: "#6558d3" },
-  { id: "driver", label: "司机端", short: "司机端", color: "#3587e7" },
-  { id: "transfer", label: "转单端", short: "转单端", color: "#e0923f" },
-  { id: "carpool", label: "顺风车", short: "顺风车", color: "#25a579" },
-  { id: "designated", label: "代驾", short: "代驾", color: "#c56ad0" },
-  { id: "airport", label: "接送机", short: "接送机", color: "#dc5a58" },
-];
+import type { BizLine } from "@/entities/business/model";
+import type { AlertItem } from "../model/alert";
+export type { AlertItem } from "../model/alert";
 
 // ── Alert ──
-export type AlertItem = {
-  id: number; level: "P0" | "P1" | "P2"; title: string;
-  scope: string; time: string; value: string; baseline: string;
-  delta: string; status: "firing" | "claimed"; metric: string; biz: BizLine;
-};
-
 export const initialAlerts: AlertItem[] = [
   { id: 1, level: "P0", title: "预付成功率持续低于阈值", scope: "全国 · 全部座型", time: "持续 4 分钟", value: "91.8%", baseline: "阈值 95.0%", delta: "-3.2pp", status: "firing", metric: "prepay_success_rate · v3", biz: "carpool" },
   { id: 2, level: "P0", title: "派单响应超时激增", scope: "全国 · 快车", time: "持续 3 分钟", value: "12.4%", baseline: "阈值 5.0%", delta: "+7.4pp", status: "firing", metric: "dispatch_timeout_rate · v2", biz: "driver" },

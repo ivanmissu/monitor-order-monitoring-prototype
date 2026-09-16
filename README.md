@@ -1,8 +1,8 @@
-# Monitor · 多业务线订单监控原型
+# Monitor · 多业务线订单监控平台
 
-Monitor 是一个**旁路式订单业务监控平台原型**，面向研发值班、运营、客服与风控人员，覆盖司机端、转单端、顺风车、代驾、接送机等业务线。仓库同时包含可交互的 React 前端、Spring Boot 服务端、ClickHouse 表结构以及完整的 API 设计文档。
+Monitor 是一个**旁路式订单业务监控平台**，面向研发值班、运营、客服与风控人员，覆盖司机端、转单端、顺风车、代驾、接送机等业务线。仓库同时包含可交互的 React 前端、Spring Boot 服务端、ClickHouse 表结构以及完整的 API 设计文档。
 
-> 前端已完成与服务端 `/api/v1` 接口的对接（统一 API Client + 数据 Hooks，见 `src/api/`）：启动服务端后各视图自动读取实时接口数据，页面右上角显示「实时接口」徽标；**服务端不可达时自动回退到仓库内静态演示数据**（徽标显示「演示数据」），因此仍可不启动服务端直接浏览原型。服务端提供独立的 `demo` Profile，启动时无需 ClickHouse、Kafka 或 Redis。
+> 前端已完成与服务端 `/api/v1` 接口的对接（统一 API Client + 数据 Hooks，见 `frontend/src/services/monitor/`）：启动服务端后各视图自动读取实时接口数据，页面右上角显示「实时接口」徽标；**服务端不可达时自动回退到仓库内静态演示数据**（徽标显示「演示数据」），因此仍可不启动服务端直接浏览。服务端提供独立的 `demo` Profile，启动时无需 ClickHouse、Kafka 或 Redis。
 
 ## 功能概览
 
@@ -30,7 +30,7 @@ Monitor 是一个**旁路式订单业务监控平台原型**，面向研发值�
 - Recharts 3
 - Motion for React
 - Lucide React
-- `vite-plugin-singlefile`（生产构建输出单个 HTML 文件）
+- 功能视图懒加载 + Vite 多 chunk 标准静态资源构建
 
 ### 服务端
 
@@ -45,9 +45,9 @@ Monitor 是一个**旁路式订单业务监控平台原型**，面向研发值�
 ```mermaid
 flowchart LR
     Browser[浏览器] --> UI[React / Vite 前端]
-    UI --> Client[src/api Client + Hooks]
+    UI --> Client[services/monitor API Client + Hooks]
     Client --> API[Spring Boot API]
-    Client -. 服务端不可达时回退 .-> Mock[src/data.ts 静态演示数据]
+    Client -. 服务端不可达时回退 .-> Mock[features/monitoring/data/mock-dashboard.ts 静态演示数据]
     API --> Demo[DemoStore 内存数据]
     API --> CH[(ClickHouse)]
     API --> Redis[(Redis)]
@@ -56,9 +56,9 @@ flowchart LR
 
 开发环境下 `frontend/vite.config.ts` 已将 `/api` 反向代理到 `http://127.0.0.1:8080`（可用环境变量 `MONITOR_API_TARGET` 覆盖），浏览器端只走相对路径 `/api/v1`，不硬编码服务地址。前端接口对接代码集中在：
 
-- `frontend/src/api/client.ts`：统一 API Client、`/api/v1` 端点封装、响应外壳解包、角色 token 与口径水印响应头处理。
-- `frontend/src/api/hooks.ts`：`useApi` 数据获取 Hook（loading / error / 轮询 / 自动取消）。
-- `src/api/format.ts`：展示层格式化（金额分→元、比率→百分比等）。
+- `frontend/src/services/monitor/client.ts`：统一 API Client、`/api/v1` 端点封装、响应外壳解包、角色 token 与口径水印响应头处理。
+- `frontend/src/services/monitor/use-api.ts`：`useApi` 数据获取 Hook（loading / error / 轮询 / 自动取消）。
+- `frontend/src/services/monitor/format.ts`：展示层格式化（金额分→元、比率→百分比等）。
 
 各视图刷新策略遵循接口文档 §15：值班哨 20s、告警 30s、经营大盘/履约质量/风控 60s、接口监控拓扑 15s、客服工作台手动查询。
 
@@ -72,7 +72,7 @@ flowchart LR
 
 ## 快速开始
 
-### 1. 启动前端原型
+### 1. 启动前端应用
 
 环境要求：
 
@@ -90,13 +90,7 @@ npm ci
 npm run dev
 ```
 
-浏览器访问 <http://localhost:5173>。开发模式支持热更新，体验前端页面**不要求启动服务端**。
-
-如需允许局域网或容器外访问：
-
-```bash
-npm run dev -- --host 0.0.0.0
-```
+浏览器访问 <http://localhost:5173>。开发模式支持热更新，体验前端页面**不要求启动服务端**。`dev` 脚本默认绑定 `0.0.0.0`，适合容器或局域网预览。
 
 ### 2. 构建前端
 
@@ -104,7 +98,7 @@ npm run dev -- --host 0.0.0.0
 npm run build
 ```
 
-构建结果位于 `dist/index.html`。项目启用了单文件插件，脚本与样式会内联到该 HTML 中，便于直接交付静态页面。
+构建结果位于 `dist/`，包含标准 Vite 静态资源（HTML、CSS 与 JS assets），便于接入 CDN、Nginx 或任意静态资源服务。
 
 本地预览生产构建：
 
@@ -214,7 +208,8 @@ mvn spring-boot:run
 | 命令 | 说明 |
 | --- | --- |
 | `npm run dev` | 启动 Vite 开发服务器 |
-| `npm run build` | 执行 TypeScript/Vite 生产构建 |
+| `npm run typecheck` | 执行前端 TypeScript 类型检查 |
+| `npm run build` | 类型检查并执行 Vite 生产构建 |
 | `npm run preview` | 预览生产构建 |
 | `mvn spring-boot:run -Dspring-boot.run.profiles=demo` | 启动无中间件依赖的服务端 Demo |
 | `mvn test` | 运行服务端测试 |
@@ -226,17 +221,17 @@ mvn spring-boot:run
 .
 ├── frontend/                  # React 前端（Vite）
 │   ├── src/
-│   │   ├── App.tsx             # 主应用及 8 个监控视图
-│   │   ├── ApiDocs.tsx         # 交互式 API 文档页
-│   │   ├── MetricLibrary.tsx   # 指标库与集成样例
-│   │   ├── data.ts             # 前端大盘静态演示数据
-│   │   ├── metrics-data.ts     # 指标字典演示数据
-│   │   ├── api-doc-data.ts     # API 文档数据
-│   │   ├── api/                # 统一 API Client 与数据 Hooks
-│   │   └── index.css           # 全局、响应式及组件样式
+│   │   ├── app/                # 应用装配、布局与导航配置
+│   │   ├── entities/           # 业务线等领域模型
+│   │   ├── features/           # monitoring / metrics / api-docs 功能模块
+│   │   ├── services/monitor/   # 统一 API Client、Hooks、格式化
+│   │   ├── shared/             # 通用 UI 与工具函数
+│   │   ├── styles/             # 全局样式入口
+│   │   └── main.tsx            # React DOM 挂载入口
 │   ├── index.html
 │   ├── vite.config.ts          # /api 反向代理等开发服务器配置
 │   ├── package.json
+│   ├── README.md               # 前端工程说明
 │   └── tsconfig.json
 ├── backend/
 │   ├── src/main/java/          # Spring Boot 服务端实现
@@ -251,14 +246,14 @@ mvn spring-boot:run
 
 ## 数据与二次开发
 
-- 修改大盘、告警、订单时间线等演示数据：`src/data.ts`
-- 修改指标库内容：`src/metrics-data.ts`
-- 修改页面内 API 文档：`src/api-doc-data.ts`
+- 修改大盘、告警、订单时间线等演示数据：`frontend/src/features/monitoring/data/mock-dashboard.ts`
+- 修改指标库内容：`frontend/src/features/metrics/data/metrics-data.ts`
+- 修改页面内 API 文档：`frontend/src/features/api-docs/data/api-doc-data.ts`
 - 修改完整 Markdown 接口设计：`docs/monitor-api.md`
 - 修改服务端 Demo 数据：`backend/src/main/java/com/monitor/server/store/DemoStore.java`
 - 修改鉴权 Token 或基础设施连接：`backend/src/main/resources/application.yml`
 
-若要将前端接入服务端，建议先增加统一 API Client，并将当前静态数据逐步替换为 `/api/v1` 请求；开发环境可在 `frontend/vite.config.ts` 中配置 `/api` 反向代理，以避免跨域和浏览器端硬编码服务地址。
+前端已经通过 `services/monitor` 接入 `/api/v1`，新增视图时请优先复用统一 API Client 与 `useApi`，仅在服务端不可达时使用模块内 mock 数据兜底。
 
 ## 相关文档
 
@@ -274,7 +269,7 @@ mvn spring-boot:run
 
 ### 页面可以打开，但看不到真实接口数据
 
-这是当前原型的预期行为：前端默认读取静态数据，尚未请求 Spring Boot 服务。启动服务端不会自动改变前端数据源。
+前端会先请求 `/api/v1`，失败时自动显示本地演示数据并在页面上标记「演示数据（服务端未连接）」。请确认 Spring Boot 服务已启动、`MONITOR_API_TARGET` 指向正确地址，或生产网关已代理 `/api`。
 
 ### 字体加载失败
 

@@ -7,13 +7,8 @@
 //  - 统一解包 { code, message, data } 响应外壳；非 0 code 抛出 ApiError。
 //  - 读取必带响应头（X-Monitor-Freshness / partial / Grain / Dict-Version）供 UI 渲染口径水印。
 
-export type BizLine =
-  | "all"
-  | "driver"
-  | "transfer"
-  | "carpool"
-  | "designated"
-  | "airport";
+import type { BizLine } from "@/entities/business/model";
+export type { BizLine } from "@/entities/business/model";
 
 /** 演示态角色 token（见 application.yml monitor.security.tokens）。 */
 export const TOKENS = {

@@ -1,28 +1,16 @@
 import { useMemo, useState } from "react";
+import { MetricCell } from "@/shared/ui/MetricCell";
 import { AnimatePresence, motion } from "motion/react";
 import {
-  ArrowUpRight, ArrowDownRight, BookOpen, Cog, Check, ChevronRight,
-  CheckCircle2, Copy, FileCode2, Globe, Hash, Info, Layers,
+  BookOpen, Cog, Check, ChevronRight,
+  CheckCircle2, Copy, FileCode2, Globe, Hash, Layers,
   Search, Terminal, X,
 } from "lucide-react";
-import { type BizLine, bizLines } from "./data";
+import { type BizLine, bizLines } from "@/entities/business/model";
 import {
   type MetricDef, type MetricDomain, metricDefs, domainMeta, typeMeta,
   eventEnvelopeJson, codeSamples, integrationSteps,
-} from "./metrics-data";
-
-function Metric({ label, value, delta, good = true, note }: { label: string; value: string; delta: string; good?: boolean; note?: string }) {
-  return (
-    <div className="metric-cell">
-      <div className="metric-label">{label}<Info size={13} /></div>
-      <div className="metric-value">{value}</div>
-      <div className={`metric-delta ${good ? "good" : "bad"}`}>
-        {good ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />} {delta}
-        <span>{note || ""}</span>
-      </div>
-    </div>
-  );
-}
+} from "./data/metrics-data";
 
 function tbadge(label: string, color: string) {
   return <span className="t-badge" style={{ background: color + "16", color }}>{label}</span>;
@@ -42,7 +30,7 @@ function CopyBtn({ text }: { text: string }) {
 }
 
 /* ══════════ MetricLibrary ══════════ */
-export default function MetricLibrary({ biz }: { biz: BizLine }) {
+export function MetricLibraryPage({ biz }: { biz: BizLine }) {
   const [domain, setDomain] = useState<MetricDomain | "all">("all");
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<MetricDef | null>(
@@ -74,11 +62,11 @@ export default function MetricLibrary({ biz }: { biz: BizLine }) {
     <div className="content-stack">
       {/* stats */}
       <section className="metrics-band">
-        <Metric label="指标总数" value={String(stats.total)} delta="+3" note="本月新增" />
-        <Metric label="原子指标" value={String(stats.atomic)} delta="0" note="可加性子指标" />
-        <Metric label="派生指标" value={String(stats.derived)} delta="0" note="查询期派生" />
-        <Metric label="技术 / 链路指标" value={String(stats.tech)} delta="2" note="接口/新鲜度" />
-        <Metric label="覆盖业务线" value={`${stats.biz} 条`} delta="2" note="最近 90 天" />
+        <MetricCell helpIcon="info" label="指标总数" value={String(stats.total)} delta="+3" note="本月新增" />
+        <MetricCell helpIcon="info" label="原子指标" value={String(stats.atomic)} delta="0" note="可加性子指标" />
+        <MetricCell helpIcon="info" label="派生指标" value={String(stats.derived)} delta="0" note="查询期派生" />
+        <MetricCell helpIcon="info" label="技术 / 链路指标" value={String(stats.tech)} delta="2" note="接口/新鲜度" />
+        <MetricCell helpIcon="info" label="覆盖业务线" value={`${stats.biz} 条`} delta="2" note="最近 90 天" />
       </section>
 
       {/* filter bar */}

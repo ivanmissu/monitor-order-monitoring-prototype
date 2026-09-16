@@ -1,7 +1,7 @@
 // ── 数据获取 Hooks ──
 //
 // 统一封装 loading / error / freshness 状态。所有视图先尝试请求真实接口，
-// 失败时由调用方回退到静态演示数据（src/data.ts），保证原型在无服务端时仍可浏览。
+// 失败时由调用方回退到静态演示数据（features/monitoring/data/mock-dashboard.ts），保证前端在无服务端时仍可浏览。
 
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, type ApiResult, type Freshness } from "./client";
