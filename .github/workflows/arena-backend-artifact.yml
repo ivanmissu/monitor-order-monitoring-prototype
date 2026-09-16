@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - arena/01a0a498-monitor-order-monitoring-proto
+      - arena/01a0a7ba-monitor-order-monitoring-proto
     paths:
       - "backend/**"
       - ".github/workflows/arena-backend-artifact.yml"
