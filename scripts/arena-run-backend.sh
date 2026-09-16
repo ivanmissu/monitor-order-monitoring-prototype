@@ -15,7 +15,7 @@
 set -Eeuo pipefail
 
 # --- 配置 -------------------------------------------------------------------
-BRANCH="arena/01a0a7ba-monitor-order-monitoring-proto"
+BRANCH="arena/01a0a822-monitor-order-monitoring-proto"
 ARTIFACT_BRANCH="arena-artifacts/backend-jar"
 WORKFLOW="arena-backend-artifact.yml"
 JDK4PY_VERSION="25.0.2.1"
