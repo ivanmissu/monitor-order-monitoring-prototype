@@ -21,6 +21,12 @@ import {
   orderEvents, riskData, cityPerf, fmt,
   type TopoLevel, coreApis, apiTrend, slowCalls, topoNodes, topoEdges,
 } from "./data";
+import { api, type AlertView } from "./api/client";
+import { useApi, type ConnState } from "./api/hooks";
+import {
+  fmtInt, fmtGtvFen, fmtRatio, fmtDelta, fmtDeltaPp, fmtYuan,
+  metricDisplay, fmtClock, fmtDateTime, fmtDuration, fmtDurationText,
+} from "./api/format";
 
 /* ── nav config ── */
 const navItems = [
@@ -62,6 +68,37 @@ function Level({ value }: { value: AlertItem["level"] }) {
   return <span className={`level level-${value.toLowerCase()}`}>{value}</span>;
 }
 
+/** 后端连通状态徽标：live = 已对接实时接口；demo = 服务端不可达，回退静态演示数据。 */
+function ConnBadge({ state }: { state: ConnState }) {
+  if (state === "live") return <span className="conn-badge live"><i />实时接口</span>;
+  if (state === "loading" || state === "idle") return <span className="conn-badge loading"><i />加载中</span>;
+  return <span className="conn-badge demo"><i />演示数据（服务端未连接）</span>;
+}
+
+/** 将后端 AlertView 映射为前端 AlertItem，保持既有 UI 组件不变。 */
+function toAlertItem(a: AlertView): AlertItem {
+  const isRatio = a.baseline_kind === "threshold" || a.value <= 1;
+  const valueStr = isRatio && a.value <= 1 ? fmtRatio(a.value, 1) : fmtInt(a.value);
+  const baseStr = a.baseline_kind === "threshold"
+    ? `阈值 ${a.value <= 1 ? fmtRatio(a.baseline, 1) : fmtInt(a.baseline)}`
+    : `基线 ${a.value <= 1 ? fmtRatio(a.baseline, 1) : fmtInt(a.baseline)}`;
+  const status: AlertItem["status"] =
+    a.status === "firing" ? "firing" : "claimed";
+  return {
+    id: a.alert_id,
+    level: (a.level as AlertItem["level"]) || "P2",
+    title: a.title,
+    scope: a.scope?.text || "—",
+    time: fmtDurationText(a.duration_sec, a.periods),
+    value: valueStr,
+    baseline: baseStr,
+    delta: fmtDeltaPp(a.delta_pp),
+    status,
+    metric: `${a.metric?.id ?? ""}${a.metric?.version ? " · " + a.metric.version : ""}`,
+    biz: (a.biz_line as BizLine) || "all",
+  };
+}
+
 function BizBadge({ biz }: { biz: BizLine }) {
   const b = bizLines.find(x => x.id === biz);
   if (!b) return null;
@@ -86,12 +123,26 @@ function pageSubtitle(active: string) {
 export default function App() {
   const [active, setActive] = useState("sentinel");
   const [biz, setBiz] = useState<BizLine>("all");
-  const [alerts, setAlerts] = useState(initialAlerts);
+  const [localAlerts, setLocalAlerts] = useState(initialAlerts);
   const [selectedAlert, setSelectedAlert] = useState<AlertItem | null>(null);
   const [mobileNav, setMobileNav] = useState(false);
   const [orderId, setOrderId] = useState("CP20260903018462");
   const [searchedOrder, setSearchedOrder] = useState("CP20260903018462");
   const [bizDropdown, setBizDropdown] = useState(false);
+
+  // 告警列表：优先读后端 /api/v1/alerts（30s 轮询），失败回退静态演示数据。
+  const alertsApi = useApi((signal) => api.alerts("all", "all", signal), [], { pollMs: 30_000 });
+  const [ackedIds, setAckedIds] = useState<Set<number>>(new Set());
+  const backendAlerts = useMemo<AlertItem[] | null>(() => {
+    if (!alertsApi.data?.items) return null;
+    return alertsApi.data.items.map(toAlertItem);
+  }, [alertsApi.data]);
+
+  // live 时用后端数据（叠加本地已认领态），否则回退本地静态数据。
+  const alerts = useMemo<AlertItem[]>(() => {
+    const base = backendAlerts ?? localAlerts;
+    return base.map(a => (ackedIds.has(a.id) ? { ...a, status: "claimed" } : a));
+  }, [backendAlerts, localAlerts, ackedIds]);
 
   const filteredAlerts = biz === "all" ? alerts : alerts.filter(a => a.biz === biz);
   const firing = filteredAlerts.filter(a => a.status === "firing").length;
@@ -100,8 +151,13 @@ export default function App() {
   const currentBiz = bizLines.find(b => b.id === biz)!;
 
   const acknowledge = (id: number) => {
-    setAlerts(v => v.map(a => a.id === id ? { ...a, status: "claimed" } : a));
+    // 乐观更新 UI；若后端可用则调用认领接口（幂等）。
+    setAckedIds(prev => new Set(prev).add(id));
+    setLocalAlerts(v => v.map(a => a.id === id ? { ...a, status: "claimed" } : a));
     setSelectedAlert(v => v?.id === id ? { ...v, status: "claimed" } : v);
+    if (backendAlerts) {
+      api.ackAlert(id, "林舟", "值班认领").catch(() => { /* 认领失败保留乐观态，等待轮询纠正 */ });
+    }
   };
 
   if (active === "docs") return <ApiDocs onExit={() => setActive("sentinel")} />;
@@ -197,7 +253,7 @@ export default function App() {
 
           <AnimatePresence mode="wait">
             <motion.div key={`${active}-${biz}`} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }} transition={{ duration: 0.24 }}>
-              {active === "sentinel" && <Sentinel alerts={filteredAlerts} firing={firing} onSelect={setSelectedAlert} onAck={acknowledge} biz={biz} />}
+              {active === "sentinel" && <Sentinel alerts={filteredAlerts} firing={firing} onSelect={setSelectedAlert} onAck={acknowledge} biz={biz} alertsState={alertsApi.state} />}
               {active === "business" && <Business biz={biz} />}
               {active === "quality" && <Quality biz={biz} />}
               {active === "service" && <Service orderId={orderId} setOrderId={setOrderId} searchedOrder={searchedOrder} search={() => setSearchedOrder(orderId || "CP20260903018462")} />}
@@ -254,21 +310,46 @@ export default function App() {
 }
 
 /* ══════════ SENTINEL ══════════ */
-function Sentinel({ alerts, firing, onSelect, onAck, biz }: { alerts: AlertItem[]; firing: number; onSelect: (a: AlertItem) => void; onAck: (id: number) => void; biz: BizLine }) {
+function Sentinel({ alerts, firing, onSelect, onAck, biz, alertsState }: { alerts: AlertItem[]; firing: number; onSelect: (a: AlertItem) => void; onAck: (id: number) => void; biz: BizLine; alertsState: ConnState }) {
+  // 首屏聚合 BFF：链路健康 + KPI + 业务线卡片（值班哨 20s 刷新）。
+  const boot = useApi((signal) => api.sentinelBootstrap(biz, signal), [biz], { pollMs: 20_000 });
+  const live = boot.state === "live" && !!boot.data;
+
+  // 链路健康节点（回退静态 statusNodes）。
+  const healthNodes = live
+    ? boot.data!.link_health.nodes.map(n => ({
+        label: n.label,
+        value: n.status === "ok" ? "正常" : n.status === "warn" ? "注意" : "异常",
+        sub: n.detail || "",
+        state: n.status === "ok" ? "ok" : n.status === "warn" ? "warn" : "bad",
+      }))
+    : statusNodes;
+  const abnormal = live ? boot.data!.link_health.abnormal : statusNodes.filter(n => n.state !== "ok").length;
+  const evaluatedAt = live ? fmtClock(boot.data!.link_health.evaluated_at) : "14:32:00";
+
+  // KPI 指标带：从 bootstrap.kpi 按 metric id 取值，回退静态数据。
+  const kpiMap = new Map((boot.data?.kpi ?? []).map(v => [v.metric, v]));
+  const kpi = (id: string) => kpiMap.get(id);
+  const orderKpi = kpi("core.order_created_cnt");
+  const deliveredKpi = kpi("core.order_delivered_cnt");
+  const rateKpi = kpi("core.delivery_rate");
+  const gtvKpi = kpi("fund.gtv_net");
+  const delayKpi = kpi("fund.settle_delay_rate");
+
   return (
     <div className="content-stack">
       {/* health pipeline */}
       <section className="health-section">
         <div className="section-title">
-          <div><h2>链路健康</h2><p>最近求值 14:32:00，数据窗口延迟 1 分钟</p></div>
-          <span className="health-summary"><i />5 个节点中 1 个异常</span>
+          <div><h2>链路健康 <ConnBadge state={boot.state} /></h2><p>最近求值 {evaluatedAt}，数据窗口延迟 1 分钟</p></div>
+          <span className="health-summary"><i />{healthNodes.length} 个节点中 {abnormal} 个异常</span>
         </div>
         <div className="health-line">
-          {statusNodes.map((n, i) => (
+          {healthNodes.map((n, i) => (
             <div className={`health-node ${n.state}`} key={n.label}>
               <div className="node-top">
                 <span className="node-dot">{n.state === "ok" ? <Check size={14} /> : <AlertTriangle size={14} />}</span>
-                {i < statusNodes.length - 1 && <span className="connector" />}
+                {i < healthNodes.length - 1 && <span className="connector" />}
               </div>
               <strong>{n.label}</strong><b>{n.value}</b><span>{n.sub}</span>
             </div>
@@ -277,15 +358,27 @@ function Sentinel({ alerts, firing, onSelect, onAck, biz }: { alerts: AlertItem[
       </section>
 
       {/* biz line overview cards — only in "all" mode */}
-      {biz === "all" && <BizOverviewCards />}
+      {biz === "all" && <BizOverviewCards cards={live ? boot.data!.biz_cards : null} />}
 
       {/* KPI band */}
       <section className="metrics-band">
-        <Metric label="今日总订单" value={biz === "all" ? "557,865" : (bizOverview[biz]?.orders || "—")} delta={biz === "all" ? "5.6%" : (bizOverview[biz]?.delta || "—")} />
-        <Metric label="今日完单" value={biz === "all" ? "440,707" : (bizOverview[biz]?.delivered || "—")} delta="3.1%" />
-        <Metric label="综合完单率" value={biz === "all" ? "88.2%" : (bizOverview[biz]?.rate || "—")} delta="1.2pp" note="30 日基线" good={biz === "all" ? true : bizOverview[biz]?.rateGood ?? true} />
-        <Metric label="净 GTV" value={biz === "all" ? "¥ 6,550万" : (bizOverview[biz]?.gtv || "—")} delta="4.7%" />
-        <Metric label="结算延迟率" value="0.42%" delta="0.18pp" good={false} />
+        <Metric label="今日总订单"
+          value={orderKpi ? fmtInt(orderKpi.value) : (biz === "all" ? "557,865" : (bizOverview[biz]?.orders || "—"))}
+          delta={orderKpi ? metricDisplay(orderKpi).delta : (biz === "all" ? "5.6%" : (bizOverview[biz]?.delta || "—"))} />
+        <Metric label="今日完单"
+          value={deliveredKpi ? fmtInt(deliveredKpi.value) : (biz === "all" ? "440,707" : (bizOverview[biz]?.delivered || "—"))}
+          delta={deliveredKpi ? metricDisplay(deliveredKpi).delta : "3.1%"} />
+        <Metric label="综合完单率"
+          value={rateKpi ? fmtRatio(rateKpi.value, 1) : (biz === "all" ? "88.2%" : (bizOverview[biz]?.rate || "—"))}
+          delta={rateKpi ? metricDisplay(rateKpi).delta : "1.2pp"} note="30 日基线"
+          good={rateKpi ? rateKpi.good : (biz === "all" ? true : bizOverview[biz]?.rateGood ?? true)} />
+        <Metric label="净 GTV"
+          value={gtvKpi ? fmtGtvFen(gtvKpi.value) : (biz === "all" ? "¥ 6,550万" : (bizOverview[biz]?.gtv || "—"))}
+          delta={gtvKpi ? metricDisplay(gtvKpi).delta : "4.7%"} />
+        <Metric label="结算延迟率"
+          value={delayKpi ? fmtRatio(delayKpi.value, 2) : "0.42%"}
+          delta={delayKpi ? metricDisplay(delayKpi).delta : "0.18pp"}
+          good={delayKpi ? delayKpi.good : false} />
       </section>
 
       {/* main chart + alerts */}
@@ -317,7 +410,7 @@ function Sentinel({ alerts, firing, onSelect, onAck, biz }: { alerts: AlertItem[
 
         <section className="panel alert-panel">
           <div className="panel-head">
-            <div><h2>活动告警 <span className="title-count">{firing}</span></h2><p>按优先级与触发时间排序</p></div>
+            <div><h2>活动告警 <span className="title-count">{firing}</span> <ConnBadge state={alertsState} /></h2><p>按优先级与触发时间排序</p></div>
             <button className="text-button">全部告警<ChevronRight size={14} /></button>
           </div>
           <div className="alert-list">
@@ -346,20 +439,26 @@ function Sentinel({ alerts, firing, onSelect, onAck, biz }: { alerts: AlertItem[
 
       <div className="freshness-note">
         <Database size={15} />
-        <span>数据截至 2026-09-03 14:31:00 (Asia/Shanghai)</span><span>·</span>
-        <span>指标口径版本 v2026.09</span>
+        <span>数据截至 {boot.serverTime ? fmtDateTime(boot.serverTime) : "2026-09-03 14:31:00"} (Asia/Shanghai)</span><span>·</span>
+        <span>指标口径版本 {boot.freshness?.dictVersion ? `v${boot.freshness.dictVersion}` : "v2026.09"}</span>
       </div>
     </div>
   );
 }
 
 /* ── Biz Overview Cards ── */
-function BizOverviewCards() {
+function BizOverviewCards({ cards }: { cards: import("./api/client").BizCard[] | null }) {
   const entries = bizLines.filter(b => b.id !== "all");
+  const byId = new Map((cards ?? []).map(c => [c.biz_line, c]));
   return (
     <div className="biz-cards">
       {entries.map(b => {
+        const live = byId.get(b.id);
         const d = bizOverview[b.id];
+        const orders = live ? fmtInt(live.orders) : d.orders;
+        const rate = live ? fmtRatio(live.delivery_rate, 1) : d.rate;
+        const rateGood = live ? live.rate_good : d.rateGood;
+        const gtv = live ? fmtGtvFen(live.gtv_fen) : d.gtv;
         const Icon = bizIcons[b.id];
         return (
           <div className="biz-card" key={b.id} style={{ borderTopColor: b.color }}>
@@ -368,9 +467,9 @@ function BizOverviewCards() {
               <strong>{b.label}</strong>
             </div>
             <div className="biz-card-body">
-              <div><span>订单</span><b>{d.orders}</b></div>
-              <div><span>完单率</span><b style={d.rateGood ? {} : { color: "#d25555" }}>{d.rate}</b></div>
-              <div><span>GTV</span><b>{d.gtv}</b></div>
+              <div><span>订单</span><b>{orders}</b></div>
+              <div><span>完单率</span><b style={rateGood ? {} : { color: "#d25555" }}>{rate}</b></div>
+              <div><span>GTV</span><b>{gtv}</b></div>
             </div>
           </div>
         );
@@ -382,13 +481,23 @@ function BizOverviewCards() {
 /* ══════════ BUSINESS ══════════ */
 function Business({ biz }: { biz: BizLine }) {
   const activeBiz = biz === "all" ? "carpool" : biz;
-  const currentFunnel = funnels[activeBiz] || funnels.carpool;
   const d = bizOverview[activeBiz] || bizOverview.carpool;
 
-  // composition donut
-  const compData = bizLines.filter(b => b.id !== "all").map(b => ({
-    name: b.label, value: parseInt(bizOverview[b.id].orders.replace(/,/g, "")), color: b.color,
-  }));
+  // 经营大盘：并行拉取漏斗 / 构成 / 城市排行（60s 刷新）。
+  const funnelApi = useApi((s) => api.funnel(biz, undefined, s), [biz], { pollMs: 60_000 });
+  const compApi = useApi((s) => api.composition("core.order_created_cnt", s), [], { pollMs: 60_000 });
+  const cityApi = useApi((s) => api.cityRank(biz, "delivered_desc", 6, s), [biz], { pollMs: 60_000 });
+
+  // 漏斗数据：live 时用后端 steps，否则回退静态 funnels。
+  const currentFunnel = funnelApi.data
+    ? funnelApi.data.steps.map(s => ({ label: s.label, value: s.value, rate: s.rate != null ? +(s.rate * 100).toFixed(1) : 100 }))
+    : (funnels[activeBiz] || funnels.carpool);
+  const funnelVersion = funnelApi.data?.definition_version || "v2";
+
+  // 业务线构成饼图：live 时用后端 composition items。
+  const compData = compApi.data
+    ? compApi.data.items.filter(i => i.biz_line !== "all").map(i => ({ name: i.label, value: i.value, color: i.color }))
+    : bizLines.filter(b => b.id !== "all").map(b => ({ name: b.label, value: parseInt(bizOverview[b.id].orders.replace(/,/g, "")), color: b.color }));
 
   return (
     <div className="content-stack">
@@ -402,8 +511,8 @@ function Business({ biz }: { biz: BizLine }) {
       <div className="business-grid">
         <section className="panel">
           <div className="panel-head">
-            <div><h2>订单履约漏斗</h2><p>{biz === "all" ? "全平台" : bizLines.find(b => b.id === biz)?.label} · 今日事件口径</p></div>
-            <span className="version">口径 v2</span>
+            <div><h2>订单履约漏斗 <ConnBadge state={funnelApi.state} /></h2><p>{biz === "all" ? "全平台" : bizLines.find(b => b.id === biz)?.label} · 今日事件口径</p></div>
+            <span className="version">口径 {funnelVersion}</span>
           </div>
           <div className="funnel-list">
             {currentFunnel.map((x, i) => (
@@ -418,7 +527,7 @@ function Business({ biz }: { biz: BizLine }) {
 
         {biz === "all" ? (
           <section className="panel">
-            <div className="panel-head"><div><h2>业务线构成</h2><p>今日订单量占比</p></div></div>
+            <div className="panel-head"><div><h2>业务线构成 <ConnBadge state={compApi.state} /></h2><p>今日订单量占比</p></div></div>
             <div className="composition-chart">
               <ResponsiveContainer width="100%" height={200}>
                 <PieChart><Pie data={compData} cx="50%" cy="50%" innerRadius={55} outerRadius={80} dataKey="value" paddingAngle={2}>
@@ -432,8 +541,8 @@ function Business({ biz }: { biz: BizLine }) {
           </section>
         ) : (
           <section className="panel">
-            <div className="panel-head"><div><h2>城市经营表现</h2><p>按今日完单量排序</p></div><button className="text-button">查看全部<ChevronRight size={14} /></button></div>
-            <CityRows />
+            <div className="panel-head"><div><h2>城市经营表现 <ConnBadge state={cityApi.state} /></h2><p>按今日完单量排序</p></div><button className="text-button">查看全部<ChevronRight size={14} /></button></div>
+            <CityRows rows={cityApi.data} />
           </section>
         )}
       </div>
@@ -452,11 +561,14 @@ function Business({ biz }: { biz: BizLine }) {
   );
 }
 
-function CityRows() {
+function CityRows({ rows }: { rows?: import("./api/client").CityRow[] | null }) {
+  const data: [string, string, string, string][] = rows && rows.length
+    ? rows.map(r => [r.name, fmtInt(r.delivered), fmtRatio(r.delivery_rate, 1), fmtDelta(r.yoy)])
+    : cityPerf as [string, string, string, string][];
   return (
     <div className="city-table">
       <div className="city-row head"><span>城市</span><span>完单量</span><span>完单率</span><span>同比</span></div>
-      {cityPerf.map(x => (
+      {data.map(x => (
         <div className="city-row" key={x[0]}><strong>{x[0]}</strong><span>{x[1]}</span><span>{x[2]}</span><em className={x[3].startsWith("-") ? "negative" : ""}>{x[3]}</em></div>
       ))}
     </div>
@@ -465,23 +577,42 @@ function CityRows() {
 
 /* ══════════ QUALITY ══════════ */
 function Quality({ biz }: { biz: BizLine }) {
-  const cancelData = [
-    { name: "司机/服务方有责", value: biz === "all" ? 3824 : 824, color: "#e45e5e" },
-    { name: "司机/服务方无责", value: biz === "all" ? 5175 : 1175, color: "#edae49" },
-    { name: "用户取消", value: biz === "all" ? 9398 : 2398, color: "#6558d3" },
-    { name: "系统取消", value: biz === "all" ? 1286 : 286, color: "#9b9ca8" },
-  ];
+  // 履约质量：并行 KPI / 取消矩阵 / 风险城市（60s 刷新）。
+  const sumApi = useApi((s) => api.qualitySummary(biz, s), [biz], { pollMs: 60_000 });
+  const cancelApi = useApi((s) => api.cancelMatrix(biz, "by_fault", s), [biz], { pollMs: 60_000 });
+  const riskCityApi = useApi((s) => api.riskCities(s), [], { pollMs: 60_000 });
+
+  const kpiByMetric = new Map((sumApi.data ?? []).map(it => [it.value.metric, it.value]));
+  const kpiOf = (id: string) => kpiByMetric.get(id);
+  const atFault = kpiOf("core.cancel_rate_atfault");
+  const noShow = kpiOf("core.no_show_rate");
+  const waitOver = kpiOf("core.wait_over8_rate");
+  const complaint = kpiOf("exp.complaint_rate");
+
+  const cancelData = cancelApi.data
+    ? cancelApi.data.marginal.map(m => ({ name: m.label, value: m.value, color: m.color }))
+    : [
+        { name: "司机/服务方有责", value: biz === "all" ? 3824 : 824, color: "#e45e5e" },
+        { name: "司机/服务方无责", value: biz === "all" ? 5175 : 1175, color: "#edae49" },
+        { name: "用户取消", value: biz === "all" ? 9398 : 2398, color: "#6558d3" },
+        { name: "系统取消", value: biz === "all" ? 1286 : 286, color: "#9b9ca8" },
+      ];
+
+  const riskCities: [string, string, string, string][] = riskCityApi.data && riskCityApi.data.length
+    ? riskCityApi.data.map(c => [c.name, c.main_label, fmtRatio(c.main_value, c.main_value < 0.01 ? 2 : 1), c.level === "high" ? "高" : c.level === "mid" ? "中" : "低"])
+    : [["成都", "等待超率", "17.3%", "高"], ["广州", "申诉推翻率", "32.8%", "高"], ["武汉", "客诉率", "0.53%", "中"], ["杭州", "差评率", "1.86%", "中"]];
+
   return (
     <div className="content-stack">
       <section className="metrics-band four">
-        <Metric label="服务方有责取消率" value={biz === "all" ? "1.12%" : "1.34%"} delta="0.3pp" good={false} />
-        <Metric label="爽约率" value="0.62%" delta="0.08pp" />
-        <Metric label="等待超时率" value="12.8%" delta="1.6pp" good={false} />
-        <Metric label="客诉率（7日）" value="0.38%" delta="0.05pp" />
+        <Metric label="服务方有责取消率" value={atFault ? fmtRatio(atFault.value, 2) : (biz === "all" ? "1.12%" : "1.34%")} delta={atFault ? metricDisplay(atFault).delta : "0.3pp"} good={atFault ? atFault.good : false} />
+        <Metric label="爽约率" value={noShow ? fmtRatio(noShow.value, 2) : "0.62%"} delta={noShow ? metricDisplay(noShow).delta : "0.08pp"} good={noShow ? noShow.good : true} />
+        <Metric label="等待超时率" value={waitOver ? fmtRatio(waitOver.value, 1) : "12.8%"} delta={waitOver ? metricDisplay(waitOver).delta : "1.6pp"} good={waitOver ? waitOver.good : false} />
+        <Metric label="客诉率（7日）" value={complaint ? fmtRatio(complaint.value, 2) : "0.38%"} delta={complaint ? metricDisplay(complaint).delta : "0.05pp"} good={complaint ? complaint.good : true} />
       </section>
       <div className="business-grid">
         <section className="panel">
-          <div className="panel-head"><div><h2>取消归因</h2><p>{biz === "all" ? "全业务线" : bizLines.find(b => b.id === biz)?.label} · 按 责任方 × 阶段 × 归责</p></div></div>
+          <div className="panel-head"><div><h2>取消归因 <ConnBadge state={cancelApi.state} /></h2><p>{biz === "all" ? "全业务线" : bizLines.find(b => b.id === biz)?.label} · 按 责任方 × 阶段 × 归责</p></div></div>
           <div className="bar-chart">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={cancelData} layout="vertical" margin={{ left: 20, right: 28 }}>
@@ -494,9 +625,9 @@ function Quality({ biz }: { biz: BizLine }) {
           </div>
         </section>
         <section className="panel">
-          <div className="panel-head"><div><h2>体验风险城市</h2><p>综合等待、客诉、差评与申诉推翻</p></div></div>
+          <div className="panel-head"><div><h2>体验风险城市 <ConnBadge state={riskCityApi.state} /></h2><p>综合等待、客诉、差评与申诉推翻</p></div></div>
           <div className="risk-city-list">
-            {[["成都", "等待超率", "17.3%", "高"], ["广州", "申诉推翻率", "32.8%", "高"], ["武汉", "客诉率", "0.53%", "中"], ["杭州", "差评率", "1.86%", "中"]].map(x => (
+            {riskCities.map(x => (
               <div key={x[0]}><strong>{x[0]}</strong><span>{x[1]}</span><b>{x[2]}</b><em className={x[3] === "高" ? "high" : ""}>{x[3]}</em></div>
             ))}
           </div>
@@ -507,7 +638,37 @@ function Quality({ biz }: { biz: BizLine }) {
 }
 
 /* ══════════ SERVICE ══════════ */
+const BIZ_LABEL: Record<string, string> = {
+  driver: "司机端", transfer: "转单端", carpool: "顺风车", designated: "代驾", airport: "接送机", all: "全平台",
+};
+const SEAT_LABEL: Record<string, string> = {
+  exclusive: "独享", two_seat: "2 座", three_seat: "3 座", all: "全部座型",
+};
+
 function Service({ orderId, setOrderId, searchedOrder, search }: { orderId: string; setOrderId: (v: string) => void; searchedOrder: string; search: () => void }) {
+  // 客服工作台：手动查询触发（禁止轮询）。订单快照 + 事件时间线。
+  const orderApi = useApi((s) => api.order(searchedOrder, s), [searchedOrder]);
+  const eventsApi = useApi((s) => api.orderEvents(searchedOrder, s), [searchedOrder]);
+  const o = orderApi.data;
+  const tl = eventsApi.data;
+
+  const notFound = orderApi.state === "error" && (orderApi.error as import("./api/client").ApiError)?.code === 40401;
+
+  const summaryRows: [string, string][] = o
+    ? [
+        ["业务线", BIZ_LABEL[o.biz_line] || o.biz_line],
+        ["城市", o.city_name],
+        ["座型", SEAT_LABEL[o.seat_type] || o.seat_type],
+        ["订单金额", fmtYuan(o.amount_fen)],
+        ["司机标识", o.driver_id_hash_masked],
+        ["业务归属日", o.dt],
+      ]
+    : [["业务线", "顺风车"], ["城市", "杭州市"], ["座型", "独享"], ["订单金额", "¥86.50"], ["司机标识", "8a7f...21de"], ["业务归属日", "2026-09-03"]];
+
+  const events = tl
+    ? tl.events.map(e => ({ time: fmtClock(e.event_time), name: e.label, event: e.event_type, note: e.note || "" }))
+    : orderEvents;
+
   return (
     <div className="content-stack">
       <section className="order-search">
@@ -515,28 +676,33 @@ function Service({ orderId, setOrderId, searchedOrder, search }: { orderId: stri
         <input value={orderId} onChange={e => setOrderId(e.target.value)} onKeyDown={e => e.key === "Enter" && search()} placeholder="输入订单号查询（支持全业务线，最长 90 天）" />
         <button onClick={search}>查询订单</button>
       </section>
+      {notFound && (
+        <div className="freshness-note" style={{ color: "#d25555" }}>
+          <AlertTriangle size={15} /><span>未找到订单 {searchedOrder}，请核对订单号（演示订单：CP20260903018462）。</span>
+        </div>
+      )}
       <section className="order-layout">
         <div className="order-summary">
-          <div className="summary-head"><span>订单快照</span><b>已完成</b></div>
-          <h2>{searchedOrder}</h2>
+          <div className="summary-head"><span>订单快照 </span><b>{o ? o.status_label : "已完成"}</b></div>
+          <h2>{searchedOrder} <ConnBadge state={orderApi.state} /></h2>
           <dl>
-            {[["业务线", "顺风车"], ["城市", "杭州市"], ["座型", "独享"], ["订单金额", "¥86.50"], ["司机标识", "8a7f...21de"], ["业务归属日", "2026-09-03"]].map(x => (
+            {summaryRows.map(x => (
               <div key={x[0]}><dt>{x[0]}</dt><dd>{x[1]}</dd></div>
             ))}
-            <div><dt>事件完整性</dt><dd className="complete"><Check size={13} /> 完整</dd></div>
+            <div><dt>事件完整性</dt><dd className="complete"><Check size={13} /> {o ? (o.completeness.state === "complete" ? "完整" : `缺 ${o.completeness.missing.length} 个节点`) : "完整"}</dd></div>
           </dl>
-          <p><ShieldCheck size={14} />仅展示脱敏后的维度快照</p>
+          <p><ShieldCheck size={14} />{o ? o.privacy_note : "仅展示脱敏后的维度快照"}</p>
         </div>
         <div className="timeline-panel">
           <div className="panel-head">
-            <div><h2>订单事件时间线</h2><p>共 {orderEvents.length} 个领域事件 · 链路耗时 2h 06m</p></div>
+            <div><h2>订单事件时间线 <ConnBadge state={eventsApi.state} /></h2><p>共 {events.length} 个领域事件{tl ? ` · 链路耗时 ${fmtDuration(tl.duration_sec)} · 查询 ${tl.query_cost_ms}ms` : " · 链路耗时 2h 06m"}</p></div>
             <button className="text-button">查看原始 JSON</button>
           </div>
           <div className="timeline">
-            {orderEvents.map((e, i) => (
-              <div className="timeline-item" key={e.time}>
+            {events.map((e, i) => (
+              <div className="timeline-item" key={`${e.time}-${i}`}>
                 <span className="timeline-time">{e.time}</span>
-                <i>{i === orderEvents.length - 1 ? <Check size={12} /> : null}</i>
+                <i>{i === events.length - 1 ? <Check size={12} /> : null}</i>
                 <div><strong>{e.name}</strong><code>{e.event}</code><p>{e.note}</p></div>
               </div>
             ))}
@@ -549,17 +715,25 @@ function Service({ orderId, setOrderId, searchedOrder, search }: { orderId: stri
 
 /* ══════════ RISK ══════════ */
 function Risk({ biz }: { biz: BizLine }) {
+  // 风控观测 KPI（60s 刷新）。命中/拦截/冻结/申诉推翻。
+  const sumApi = useApi((s) => api.riskSummary(biz, s), [biz], { pollMs: 60_000 });
+  const byMetric = new Map((sumApi.data ?? []).map(v => [v.metric, v]));
+  const hit = byMetric.get("risk.risk_hit_cnt");
+  const frozen = byMetric.get("risk.frozen_amount_sum");
+  const appeal = byMetric.get("exp.appeal_overturn_rate");
+  const intercept = byMetric.get("risk.intercepted_order_cnt");
+
   return (
     <div className="content-stack">
       <section className="metrics-band four">
-        <Metric label="今日规则命中" value={biz === "all" ? "1,493" : "493"} delta="8.6%" good={false} />
-        <Metric label="拦截订单" value={biz === "all" ? "428" : "128"} delta="3.4%" good={false} />
-        <Metric label="冻结金额" value={biz === "all" ? "¥ 62.8万" : "¥ 18.6万"} delta="5.1%" good={false} />
-        <Metric label="申诉推翻率" value="18.4%" delta="2.2pp" />
+        <Metric label="今日规则命中" value={hit ? fmtInt(hit.value) : (biz === "all" ? "1,493" : "493")} delta={hit ? metricDisplay(hit).delta : "8.6%"} good={hit ? hit.good : false} />
+        <Metric label="拦截订单" value={intercept ? fmtInt(intercept.value) : (biz === "all" ? "428" : "128")} delta={intercept ? metricDisplay(intercept).delta : "3.4%"} good={intercept ? intercept.good : false} />
+        <Metric label="冻结金额" value={frozen ? fmtGtvFen(frozen.value) : (biz === "all" ? "¥ 62.8万" : "¥ 18.6万")} delta={frozen ? metricDisplay(frozen).delta : "5.1%"} good={frozen ? frozen.good : false} />
+        <Metric label="申诉推翻率" value={appeal ? fmtRatio(appeal.value, 1) : "18.4%"} delta={appeal ? metricDisplay(appeal).delta : "2.2pp"} good={appeal ? appeal.good : true} />
       </section>
       <div className="business-grid">
         <section className="panel">
-          <div className="panel-head"><div><h2>规则命中趋势</h2><p>{biz === "all" ? "全业务线" : bizLines.find(b => b.id === biz)?.label} · 最近 7 天</p></div></div>
+          <div className="panel-head"><div><h2>规则命中趋势 <ConnBadge state={sumApi.state} /></h2><p>{biz === "all" ? "全业务线" : bizLines.find(b => b.id === biz)?.label} · 最近 7 天</p></div></div>
           <div className="bar-chart">
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={riskData} margin={{ top: 10, right: 10, left: -20 }}>
@@ -596,11 +770,19 @@ function Spark({ data, color, w = 72, h = 22 }: { data: number[]; color: string;
   return <svg width={w} height={h} className="spark"><polyline points={pts} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" /></svg>;
 }
 
-function TopoChart() {
-  const nodes = Object.fromEntries(topoNodes.map(n => [n.id, n]));
+function TopoChart({ topo }: { topo?: import("./api/client").Topology | null }) {
+  // live 时用后端布局坐标与异常率；否则回退静态拓扑。
+  const liveNodes = topo?.nodes?.map(n => ({ id: n.id, x: n.x, y: n.y, w: n.w, h: n.h, label: n.label, sub: n.sub }));
+  const liveEdges = topo?.edges?.map(e => ({
+    from: e.from, to: e.to, rate: e.error_rate * 100,
+    level: (e.level === "bad" ? "bad" : e.level === "warn" ? "warn" : "ok") as TopoLevel,
+  }));
+  const usedNodes = liveNodes && liveNodes.length ? liveNodes : topoNodes;
+  const usedEdges = liveEdges && liveEdges.length ? liveEdges : topoEdges;
+  const nodes = Object.fromEntries(usedNodes.map(n => [n.id, n]));
   return (
     <svg viewBox="0 0 900 430" role="img" aria-label="上下游依赖拓扑">
-      {topoEdges.map(e => {
+      {usedEdges.map(e => {
         const f = nodes[e.from], t = nodes[e.to];
         const x1 = f.x + f.w, y1 = f.y + f.h / 2, x2 = t.x, y2 = t.y + t.h / 2;
         const dx = Math.max((x2 - x1) / 2, 44);
@@ -622,8 +804,8 @@ function TopoChart() {
           </g>
         );
       })}
-      {topoNodes.map(n => {
-        const badIn = topoEdges.some(e => e.to === n.id && e.level === "bad");
+      {usedNodes.map(n => {
+        const badIn = usedEdges.some(e => e.to === n.id && e.level === "bad");
         return (
           <g key={n.id} transform={`translate(${n.x},${n.y})`}>
             <rect width={n.w} height={n.h} rx={8} className={`topo-node ${badIn ? "alert" : ""}`} />
@@ -638,22 +820,54 @@ function TopoChart() {
 }
 
 function Tech({ biz }: { biz: BizLine }) {
-  const apis = biz === "all" ? coreApis : coreApis.filter(a => a.biz === biz || a.biz === "all");
-  const badCount = coreApis.filter(a => a.status === "bad").length;
+  // 接口监控：KPI / 接口清单 / 拓扑 / 慢调用（topology 15s 轮询）。
+  const kpiApi = useApi((s) => api.techSummary(biz, s), [biz], { pollMs: 60_000 });
+  const apisApi = useApi((s) => api.techApis(biz, "fail_rate_desc", s), [biz], { pollMs: 15_000 });
+  const topoApi = useApi((s) => api.topology(s), [], { pollMs: 15_000 });
+  const slowApi = useApi((s) => api.slowCalls(s), [], { pollMs: 30_000 });
+
+  const kByMetric = new Map((kpiApi.data ?? []).map(k => [k.metric, k]));
+  const kd = (id: string) => {
+    const k = kByMetric.get(id);
+    if (!k) return null;
+    let value: string;
+    if (k.unit === "ratio") value = fmtRatio(k.value, 2);
+    else if (k.unit === "ms") value = `${fmtInt(k.value)}ms`;
+    else value = `${fmtInt(k.value)}`;
+    const delta = k.delta_pp !== undefined ? fmtDeltaPp(k.delta_pp) : (k.delta !== undefined ? (Math.abs(k.delta) < 1 ? fmtDelta(k.delta) : `${fmtInt(k.delta)} 个`) : "—");
+    return { value, delta, good: k.good };
+  };
+  const monitored = kd("api.monitored_cnt");
+  const abnormal = kd("api.abnormal_cnt");
+  const avgFail = kd("api.avg_fail_rate");
+  const ingress = kd("api.ingress_qps");
+  const linkP99 = kd("api.link_p99_ms");
+
+  // 接口清单：live 时用后端 ApiView，否则回退静态 coreApis。
+  type Row = { name: string; service: string; biz: BizLine; qps: number; failRate: number; p99: number; status: string; trend: number[] };
+  const apis: Row[] = apisApi.data
+    ? apisApi.data.map(a => ({
+        name: a.path, service: `${a.service} · ${a.service_label}`, biz: a.biz_line,
+        qps: a.qps, failRate: a.fail_rate * 100, p99: a.p99_ms, status: a.status, trend: a.trend,
+      }))
+    : (biz === "all" ? coreApis : coreApis.filter(a => a.biz === biz || a.biz === "all")).map(a => ({ ...a }));
+
+  const badCount = abnormal ? abnormal.value : `${coreApis.filter(a => a.status === "bad").length} 个`;
+
   return (
     <div className="content-stack">
       <section className="metrics-band">
-        <Metric label="监控核心接口" value="48 个" delta="2 个" note="较上周" />
-        <Metric label="当前异常接口" value={`${badCount} 个`} delta="2 个" good={false} />
-        <Metric label="平均失败率" value="0.34%" delta="0.11pp" good={false} />
-        <Metric label="调用总量（上游入口）" value="8,420 QPS" delta="6.4%" />
-        <Metric label="链路 P99 延迟" value="640ms" delta="120ms" good={false} />
+        <Metric label="监控核心接口" value={monitored ? `${monitored.value} 个` : "48 个"} delta={monitored ? monitored.delta : "2 个"} note="较上周" />
+        <Metric label="当前异常接口" value={abnormal ? `${abnormal.value} 个` : badCount} delta={abnormal ? abnormal.delta : "2 个"} good={false} />
+        <Metric label="平均失败率" value={avgFail ? avgFail.value : "0.34%"} delta={avgFail ? avgFail.delta : "0.11pp"} good={false} />
+        <Metric label="调用总量（上游入口）" value={ingress ? `${ingress.value} QPS` : "8,420 QPS"} delta={ingress ? ingress.delta : "6.4%"} good={ingress ? ingress.good : true} />
+        <Metric label="链路 P99 延迟" value={linkP99 ? linkP99.value : "640ms"} delta={linkP99 ? linkP99.delta : "120ms"} good={false} />
       </section>
 
       <section className="panel">
         <div className="panel-head">
           <div>
-            <h2>上下游依赖异常率</h2>
+            <h2>上下游依赖异常率 <ConnBadge state={topoApi.state} /></h2>
             <p>调用链实时标注 · 虚线流动方向即调用方向</p>
           </div>
           <div className="topo-legend">
@@ -662,14 +876,14 @@ function Tech({ biz }: { biz: BizLine }) {
             <span><i style={{ color: "#dc5a58" }} />异常 &gt;2%</span>
           </div>
         </div>
-        <div className="tech-topo"><TopoChart /></div>
+        <div className="tech-topo"><TopoChart topo={topoApi.data} /></div>
       </section>
 
       <div className="business-grid">
         <section className="panel">
           <div className="panel-head">
             <div>
-              <h2>核心接口失败率{biz !== "all" && <span className="panel-filter-note">{bizLines.find(b => b.id === biz)?.label}线 + 平台级</span>}</h2>
+              <h2>核心接口失败率 <ConnBadge state={apisApi.state} />{biz !== "all" && <span className="panel-filter-note">{bizLines.find(b => b.id === biz)?.label}线 + 平台级</span>}</h2>
               <p>按失败率倒序 · 1 分钟粒度实时聚合</p>
             </div>
             <button className="text-button">全部接口<ChevronRight size={14} /></button>
@@ -716,9 +930,12 @@ function Tech({ biz }: { biz: BizLine }) {
               </ComposedChart>
             </ResponsiveContainer>
           </div>
-          <h3 className="minor-head">慢调用 TOP</h3>
+          <h3 className="minor-head">慢调用 TOP <ConnBadge state={slowApi.state} /></h3>
           <div className="slow-list">
-            {slowCalls.map(s => (
+            {(slowApi.data && slowApi.data.length
+              ? slowApi.data.map(s => [`${s.path} ${s.label}`, `${fmtInt(s.p99_ms)}ms`, BIZ_LABEL[s.biz_line] || s.biz_line] as [string, string, string])
+              : slowCalls
+            ).map(s => (
               <div key={s[0]}><code>{s[0]}</code><b>{s[1]}</b><span>{s[2]}</span></div>
             ))}
           </div>
@@ -730,29 +947,44 @@ function Tech({ biz }: { biz: BizLine }) {
 
 /* ══════════ SYSTEM ══════════ */
 function SystemView() {
+  // 元监控：pipeline + lag 30s 轮询；alerts/stats 供告警有效率卡。
+  const pipeApi = useApi((s) => api.pipeline(s), [], { pollMs: 30_000 });
+  const lagApi = useApi((s) => api.lag(s), [], { pollMs: 30_000 });
+  const statsApi = useApi((s) => api.alertStats(s), [], { pollMs: 60_000 });
+  const reconcileApi = useApi((s) => api.reconcile(s), []);
+
+  const lag = lagApi.data;
+  const stats = statsApi.data;
+  const reconcile = reconcileApi.data as { state_gap_cnt?: number } | null;
+
+  const STATUS_LABEL: Record<string, string> = { ok: "正常", warn: "注意", bad: "异常" };
+  const components: [string, string, string, string, string, string][] = pipeApi.data && pipeApi.data.length
+    ? pipeApi.data.map(c => [c.component, c.status, STATUS_LABEL[c.status] || c.status, c.throughput, fmtClock(c.heartbeat_at), c.detail || c.extra || ""])
+    : [
+        ["order-domain-topic (5 线)", "ok", "正常", "8,420 msg/s", "14:32:08", "lag 2,210"],
+        ["monitor-consumer ×4", "ok", "正常", "8,406 msg/s", "14:32:08", "本地缓冲 0"],
+        ["ClickHouse replica-01", "ok", "正常", "写入 42ms", "14:32:07", "8C / 32G"],
+        ["ClickHouse replica-02", "ok", "正常", "复制延迟 0.3s", "14:32:07", "8C / 32G"],
+        ["RuleEvaluator", "ok", "正常", "48 条 / min", "14:32:00", "求值 328ms"],
+        ["T+1 reconciler", "warn", "注意", "缺口 23 笔", "06:18:42", "等待重算"],
+      ];
+
   return (
     <div className="content-stack">
       <section className="metrics-band four">
-        <Metric label="消费延迟 P99" value="1.2s" delta="0.4s" />
-        <Metric label="迟到事件率" value="0.018%" delta="0.003pp" />
-        <Metric label="状态缺口" value="23" delta="7 笔" good={false} />
-        <Metric label="告警有效率" value="84.6%" delta="6.2pp" note="较上周" />
+        <Metric label="消费延迟 P99" value={lag ? `${lag.consumer_lag.p99_sec}s` : "1.2s"} delta="0.4s" />
+        <Metric label="迟到事件率" value={lag ? fmtRatio(lag.late.rate, 3) : "0.018%"} delta="0.003pp" />
+        <Metric label="状态缺口" value={reconcile?.state_gap_cnt != null ? String(reconcile.state_gap_cnt) : "23"} delta="7 笔" good={false} />
+        <Metric label="告警有效率" value={stats ? fmtRatio(stats.precision, 1) : "84.6%"} delta="6.2pp" note="较上周" good={stats ? stats.precision >= stats.target : true} />
       </section>
       <section className="panel system-table">
-        <div className="panel-head"><div><h2>数据链路组件</h2><p>全业务线共享旁路链路</p></div></div>
+        <div className="panel-head"><div><h2>数据链路组件 <ConnBadge state={pipeApi.state} /></h2><p>全业务线共享旁路链路</p></div></div>
         <div className="component-row head"><span>组件</span><span>状态</span><span>吞吐 / 延迟</span><span>最近心跳</span><span>备注</span></div>
-        {[
-          ["order-domain-topic (5 线)", "正常", "8,420 msg/s", "14:32:08", "lag 2,210"],
-          ["monitor-consumer ×4", "正常", "8,406 msg/s", "14:32:08", "本地缓冲 0"],
-          ["ClickHouse replica-01", "正常", "写入 42ms", "14:32:07", "8C / 32G"],
-          ["ClickHouse replica-02", "正常", "复制延迟 0.3s", "14:32:07", "8C / 32G"],
-          ["RuleEvaluator", "正常", "48 条 / min", "14:32:00", "求值 328ms"],
-          ["T+1 reconciler", "注意", "缺口 23 笔", "06:18:42", "等待重算"],
-        ].map((r, i) => (
+        {components.map((r) => (
           <div className="component-row" key={r[0]}>
             <strong>{r[0]}</strong>
-            <span className={i === 5 ? "status-warn" : "status-ok"}><i />{r[1]}</span>
-            <span>{r[2]}</span><span>{r[3]}</span><span>{r[4]}</span>
+            <span className={r[1] === "ok" ? "status-ok" : "status-warn"}><i />{r[2]}</span>
+            <span>{r[3]}</span><span>{r[4]}</span><span>{r[5]}</span>
           </div>
         ))}
       </section>
