@@ -55,10 +55,12 @@ jobs:
             clean verify 2>&1 | tee "$LOG"
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
-            # Arena 沙箱无法直连 Actions 原始日志；将末尾输出转为 Check 注释，便于快速定位。
-            tail -n 40 "$LOG" | while IFS= read -r line; do
-              echo "::error title=SDK build::$line"
-            done
+            # Arena 沙箱无法直连 Actions 原始日志；将末尾输出合并为 Check 注释，便于快速定位。
+            details="$(tail -n 100 "$LOG")"
+            details="${details//'%'/'%25'}"
+            details="${details//$'\r'/'%0D'}"
+            details="${details//$'\n'/'%0A'}"
+            echo "::error title=SDK build::$details"
             exit "$status"
           fi
 
