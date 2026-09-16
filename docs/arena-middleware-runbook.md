@@ -222,7 +222,7 @@ curl -s -H 'Authorization: Bearer dash-token' "$B/dashboard/funnel" | head -c 20
 curl -s -H 'Authorization: Bearer oncall-token' "$B/alerts?status=firing&limit=3" | head -c 200
 
 # ③ 静默规则（曾经 "no column"：chdb 缓冲污染，已修）
-curl -s -H 'Authorization: Bearer oncall-token' "$B/alerts/silences" | head -c 200
+curl -s -H 'Authorization: Bearer oncall-token' "$B/silences" | head -c 200
 
 # ④ 事件接入：Kafka → 消费校验 → ClickHouse ODS（amount 必填，无金额显式 0）
 curl -s -X POST "$B/ingest/events" \
