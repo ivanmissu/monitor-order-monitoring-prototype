@@ -90,7 +90,11 @@ public class IntegrationSeedRunner {
 
     private void applyDdl() throws Exception {
         String ddl = new String(
-                new ClassPathResource("db/clickhouse-ddl.sql").getInputStream().readAllBytes(),
+                // 显式用本类类加载器：本方法经 CompletableFuture.runAsync 运行于
+                // ForkJoinPool.commonPool 工作线程，其 TCCL 是系统类加载器，
+                // 看不到嵌套 jar 的 BOOT-INF/classes，会 FileNotFoundException。
+                new ClassPathResource("db/clickhouse-ddl.sql",
+                        IntegrationSeedRunner.class.getClassLoader()).getInputStream().readAllBytes(),
                 StandardCharsets.UTF_8);
         int n = 0;
         for (String stmt : split(localize(ddl))) {
@@ -106,7 +110,8 @@ public class IntegrationSeedRunner {
 
     private void applySeed() throws Exception {
         String seed = new String(
-                new ClassPathResource("db/clickhouse-seed.sql").getInputStream().readAllBytes(),
+                new ClassPathResource("db/clickhouse-seed.sql",
+                        IntegrationSeedRunner.class.getClassLoader()).getInputStream().readAllBytes(),
                 StandardCharsets.UTF_8);
         seed = seed.replace("${seedDays}", String.valueOf(props.getIntegration().getSeedDays()))
                 .replace("${eventsPerDay}", String.valueOf(props.getIntegration().getSeedEventsPerDay()));

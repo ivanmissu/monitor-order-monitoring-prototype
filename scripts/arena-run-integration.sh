@@ -17,6 +17,8 @@
 # 用法：
 #   bash scripts/arena-run-integration.sh               # 触发/等待 CI → 起中间件 → 启动
 #   bash scripts/arena-run-integration.sh --no-build    # 跳过构建，用产物分支现有 jar
+#   bash scripts/arena-run-integration.sh --no-build --keep-jar  # 用本地 jar（补丁/自建，不校验 SHA）
+#   bash scripts/arena-run-integration.sh --fresh       # 清库重新播种
 #   bash scripts/arena-run-integration.sh --fresh       # DROP DATABASE 让应用重新播种
 #
 # 注意：在 Arena Agent 里应通过 start_process 后台运行本脚本以获得 live preview；
@@ -42,11 +44,13 @@ JAVA_OPTS="${JAVA_OPTS:--Xms256m -Xmx1024m}"
 
 DO_BUILD=1
 DO_FRESH=0
+DO_KEEP_JAR=0
 for arg in "$@"; do
   case "$arg" in
     --no-build) DO_BUILD=0 ;;
     --fresh)    DO_FRESH=1 ;;
-    *) echo "未知参数: $arg（支持 --no-build / --fresh）" >&2; exit 2 ;;
+    --keep-jar) DO_KEEP_JAR=1 ;;
+    *) echo "未知参数: $arg（支持 --no-build / --fresh / --keep-jar）" >&2; exit 2 ;;
   esac
 done
 
@@ -146,6 +150,10 @@ fi
 
 # --- 7. 用 git 取回 integration jar（沙箱不可达 Azure blob，故走产物分支）----
 # jar 在 CI 侧按 <95MB 分片推送（绕开 git 单文件 100MB 上限），这里按序重组并校验 SHA256。
+# --keep-jar：跳过取回，直接使用本地现有 jar（本地补丁/自建 jar 场景，不做 SHA 校验）。
+if [[ "$DO_KEEP_JAR" == "1" && -s "$JAR_OUT" ]]; then
+  log "--keep-jar：跳过产物取回，使用本地 $JAR_OUT（$(du -h "$JAR_OUT" | cut -f1)，不校验 SHA256）"
+else
 log "从 $ARTIFACT_BRANCH 取回 monitor-server-integration.jar ..."
 git fetch origin "$ARTIFACT_BRANCH"
 mkdir -p "$(dirname "$JAR_OUT")"
@@ -161,6 +169,7 @@ if [[ "$EXPECTED" != "$ACTUAL" ]]; then
   exit 1
 fi
 log "SHA256 校验通过"
+fi  # DO_KEEP_JAR
 
 # --- 8. 启动应用（profile=integration，绑定 0.0.0.0 以便 Arena 预览）---------
 # TZ=Asia/Shanghai 与 chdb 网关保持同时区：Timestamp 字面量按同口径解析，

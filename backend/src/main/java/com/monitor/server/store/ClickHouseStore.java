@@ -756,7 +756,10 @@ public class ClickHouseStore implements MonitorStore {
             ps.setString(12, writeJson(e.props()));
             ps.setLong(13, e.version() == null ? 1L : e.version());
         });
-        return java.util.Arrays.stream(r).flatMapToInt(java.util.Arrays::stream).sum();
+        // JDBC 批量约定：行计数 < 0 表示 SUCCESS_NO_INFO(-2)（clickhouse-jdbc V2 对
+        // 批量 INSERT 恒返回 -2），此时按提交行数计，避免 accepted 显示为负数。
+        return java.util.Arrays.stream(r).flatMapToInt(java.util.Arrays::stream)
+                .map(n -> n < 0 ? 1 : n).sum();
     }
 
     @Override

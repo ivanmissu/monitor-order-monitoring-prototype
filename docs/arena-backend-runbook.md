@@ -32,10 +32,14 @@ Arena 沙箱是一个**受限网络环境**，与本地开发机不同：
 ### integration 模式 —— 真实接入全部中间件（本次交付的验证形态）
 
 ```bash
-bash scripts/arena-run-integration.sh            # 触发/等待 CI → 起中间件 → 启动
-bash scripts/arena-run-integration.sh --fresh    # 清库重新播种
-bash scripts/arena-run-integration.sh --no-build # 用产物分支现有 jar
+bash scripts/arena-run-integration.sh                        # 触发/等待 CI → 起中间件 → 启动
+bash scripts/arena-run-integration.sh --fresh                # 清库重新播种
+bash scripts/arena-run-integration.sh --no-build             # 用产物分支现有 jar
+bash scripts/arena-run-integration.sh --no-build --keep-jar  # 用本地 jar（补丁/自建，不校验 SHA）
 ```
+
+> 中间件形态、分步手动启动、数据种子、jar 热修与踩坑索引见
+> **`docs/arena-middleware-runbook.md`**（「完整启动中间件」按它执行）。
 
 integration profile 下 README 技术栈的中间件全部真实生效（不再有内存 DemoStore 降级）：
 
@@ -57,9 +61,9 @@ curl -s -H 'Authorization: Bearer dash-token' \
 # 活动告警
 curl -s -H 'Authorization: Bearer dash-token' \
   'http://127.0.0.1:8080/api/v1/alerts?status=firing' | head -c 400
-# 实时事件接入（经 Kafka → 校验 → ClickHouse ODS 全链路；eventTime 为必填业务时间）
+# 实时事件接入（经 Kafka → 校验 → ClickHouse ODS 全链路；字段 snake_case，amount 必填、无金额填 0）
 curl -s -XPOST -H 'Authorization: Bearer ingest-token' -H 'Content-Type: application/json' \
-  -d '{"events":[{"eventId":"test-evt-1","eventType":"order_created","eventTime":"2026-09-16T15:30:00+08:00","orderId":"TEST-ORDER-9","bizLine":"express","cityId":110000,"seatType":"v6","amount":1000}]}' \
+  -d '{"events":[{"event_id":"test-evt-1","event_type":"order_created","event_time":"2026-09-16T15:30:00+08:00","order_id":"TEST-ORDER-9","biz_line":"express","city_id":110000,"seat_type":"v6","amount":1000}]}' \
   'http://127.0.0.1:8080/api/v1/ingest/events'
 # 事件回查（ClickHouseStore.order，验证 ODS 落库）
 curl -s -H 'Authorization: Bearer dash-token' \
