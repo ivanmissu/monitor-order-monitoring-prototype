@@ -115,6 +115,8 @@ public class MonitorProperties {
         private int maxBatchSize = 500;
         private long maxBatchBytes = 2 * 1024 * 1024L;
         private int dedupeTtlHours = 48;
+        /** Demo 环境逐条打印接收到的事件，生产环境默认关闭以控制日志量。 */
+        private boolean logEvents = false;
 
         public int getMaxBatchSize() {
             return maxBatchSize;
@@ -138,6 +140,14 @@ public class MonitorProperties {
 
         public void setDedupeTtlHours(int v) {
             this.dedupeTtlHours = v;
+        }
+
+        public boolean isLogEvents() {
+            return logEvents;
+        }
+
+        public void setLogEvents(boolean logEvents) {
+            this.logEvents = logEvents;
         }
     }
 

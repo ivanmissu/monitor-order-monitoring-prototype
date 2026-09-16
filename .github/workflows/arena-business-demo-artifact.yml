@@ -1,0 +1,92 @@
+name: Arena business demo artifact
+
+# 业务演示服务与 SDK 需要 Maven/JDK 25 编译；Arena 沙箱只负责取回 jar 并运行。
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - 'arena/**'
+    paths:
+      - "business-system-demo/**"
+      - "sdk/**"
+      - ".github/workflows/arena-business-demo-artifact.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: arena-business-demo-artifact-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ARTIFACT_BRANCH: arena-artifacts/business-demo-jar
+  JAR_PATH: business-system-demo/target/business-system-demo-1.0.0-SNAPSHOT.jar
+
+jobs:
+  build:
+    name: Build business demo jar (JDK 25)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+
+      - name: Build and install SDK
+        run: |
+          mvn --batch-mode --no-transfer-progress \
+            -f sdk/pom.xml \
+            clean install
+
+      - name: Build business system demo
+        run: |
+          mvn --batch-mode --no-transfer-progress \
+            -f business-system-demo/pom.xml \
+            clean package
+
+      - name: Upload runnable jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: business-system-demo
+          path: ${{ env.JAR_PATH }}
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Publish jar to git-reachable artifact branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GIT_AUTHOR_NAME: github-actions[bot]
+          GIT_AUTHOR_EMAIL: github-actions[bot]@users.noreply.github.com
+          GIT_COMMITTER_NAME: github-actions[bot]
+          GIT_COMMITTER_EMAIL: github-actions[bot]@users.noreply.github.com
+        run: |
+          set -Eeuo pipefail
+
+          WORK="$(mktemp -d)"
+          cp "$JAR_PATH" "$WORK/business-system-demo.jar"
+          cat >"$WORK/BUILD_INFO.txt" <<EOF
+          source_commit=${GITHUB_SHA}
+          source_ref=${GITHUB_REF}
+          run_id=${GITHUB_RUN_ID}
+          built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          jar=business-system-demo.jar
+          java=25 (temurin, build); jdk4py 25.0.2.1 (sandbox, run)
+          EOF
+
+          cd "$WORK"
+          git init -q
+          git checkout -q -b "$ARTIFACT_BRANCH"
+          git add business-system-demo.jar BUILD_INFO.txt
+          git commit -q -m "build: business demo jar from ${GITHUB_SHA}"
+          git push -q --force \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            "HEAD:refs/heads/${ARTIFACT_BRANCH}"
+          echo "Pushed jar to branch ${ARTIFACT_BRANCH}"

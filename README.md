@@ -195,6 +195,24 @@ bash scripts/arena-run-backend.sh
 
 详见 [SDK 接入手册](sdk/README.md)。
 
+## 业务系统演示
+
+仓库新增 [`business-system-demo/`](business-system-demo/)，这是一个可独立启动的 Spring Boot 订单业务系统示例：业务状态变化时集成 SDK 上报 `order_created`、`passenger_confirmed`、`order_delivered`、`order_cancelled` 等标准事件，并提供一键生成混合订单数据的接口。
+
+```bash
+# 先安装仓库内 SDK，再启动 monitor-server demo 和业务系统 demo
+mvn -f sdk/pom.xml clean install
+mvn -f backend/pom.xml spring-boot:run -Dspring-boot.run.profiles=demo
+mvn -f business-system-demo/pom.xml spring-boot:run
+
+# 另一个终端：生成 10 个顺风车混合订单，事件会异步上报到 8080
+curl -X POST http://localhost:8090/api/demo/simulate \\
+  -H 'Content-Type: application/json' \\
+  -d '{"count":10,"biz_line":"carpool","scenario":"mixed"}'
+```
+
+业务演示服务默认监听 `8090`，Monitor Demo 默认监听 `8080`。完整 API、SDK 配置和事件场景见 [业务系统 SDK 演示说明](business-system-demo/README.md)。
+
 ## 生产模式服务端
 
 生产 Profile 默认连接 ClickHouse，并可使用 Kafka 和 Redis。启动前先创建 ClickHouse 表：
@@ -248,6 +266,16 @@ mvn spring-boot:run
 │   ├── src/main/resources/     # 配置与 ClickHouse DDL
 │   ├── pom.xml                 # Maven 配置
 │   └── README.md               # 服务端实现说明
+├── business-system-demo/       # 集成 SDK 的订单业务系统演示
+│   ├── src/main/java/          # 订单状态、模拟接口与 SDK 发布示例
+│   ├── src/main/resources/     # SDK endpoint / token 配置
+│   ├── pom.xml
+│   └── README.md
+├── sdk/                        # 指标事件上报 SDK
+│   ├── monitor-metrics-sdk-core/
+│   ├── monitor-metrics-spring-boot-starter/
+│   ├── monitor-metrics-java-agent/
+│   └── README.md
 ├── docs/
 │   ├── arena-backend-runbook.md
 │   └── monitor-api.md          # 完整 API 设计文档

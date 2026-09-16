@@ -1,0 +1,41 @@
+spring:
+  application:
+    name: business-system-demo
+  jackson:
+    default-property-inclusion: non_null
+    property-naming-strategy: SNAKE_CASE
+
+server:
+  port: ${SERVER_PORT:8090}
+  shutdown: graceful
+  servlet:
+    encoding:
+      charset: UTF-8
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+
+# 业务系统只需要引入 Starter 并打开开关；token 建议由环境变量注入。
+monitor:
+  sdk:
+    enabled: ${MONITOR_SDK_ENABLED:true}
+    endpoint: ${MONITOR_SDK_ENDPOINT:http://localhost:8080/api/v1/ingest/events}
+    token: ${MONITOR_SDK_TOKEN:ingest-token}
+    batch-size: ${MONITOR_SDK_BATCH_SIZE:20}
+    max-batch-bytes: 1800000
+    flush-interval: ${MONITOR_SDK_FLUSH_INTERVAL:500ms}
+    queue-capacity: ${MONITOR_SDK_QUEUE_CAPACITY:1000}
+    max-retries: ${MONITOR_SDK_MAX_RETRIES:3}
+    initial-retry-backoff: 200ms
+    max-retry-backoff: 2s
+    connect-timeout: ${MONITOR_SDK_CONNECT_TIMEOUT:1s}
+    request-timeout: ${MONITOR_SDK_REQUEST_TIMEOUT:3s}
+    shutdown-timeout: 5s
+    user-agent: business-system-demo/1.0
+
+logging:
+  level:
+    com.monitor.businessdemo: INFO

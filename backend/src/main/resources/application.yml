@@ -78,6 +78,8 @@ monitor:
   ingest:
     max-batch-size: 500
     max-batch-bytes: 2097152
+    # 生产默认关闭逐条事件日志；demo profile 下打开，便于观察 SDK 是否正常上报
+    log-events: false
     # Redis SETNX 幂等窗口（第一道防线）
     dedupe-ttl-hours: 48
 
@@ -116,3 +118,5 @@ spring:
 monitor:
   store:
     kind: demo
+  ingest:
+    log-events: true
