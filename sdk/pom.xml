@@ -25,7 +25,8 @@
         <spring-boot.version>4.1.1</spring-boot.version>
         <byte-buddy.version>1.17.8</byte-buddy.version>
         <maven-surefire-plugin.version>3.5.2</maven-surefire-plugin.version>
-        <maven-shade-plugin.version>3.6.0</maven-shade-plugin.version>
+        <!-- 3.6.1 supports Byte Buddy's Java 24 multi-release classes when building on JDK 25. -->
+        <maven-shade-plugin.version>3.6.1</maven-shade-plugin.version>
     </properties>
 
     <dependencyManagement>
