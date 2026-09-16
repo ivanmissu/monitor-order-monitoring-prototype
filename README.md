@@ -106,7 +106,34 @@ npm run build
 npm run preview -- --host 0.0.0.0
 ```
 
-### 3. 启动服务端 Demo（可选）
+### 3. 用 Nginx 启动前端生产包（正式效果）
+
+如果要验证更接近线上部署的前端效果，不使用 `npm run dev`，而是先构建 `frontend/dist`，再由 Nginx 托管静态资源，并将 `/api` 反向代理到后端：
+
+```bash
+# 先确保 Monitor 后端已监听 8080，例如 Arena 中的全链路模式：
+bash scripts/arena-run-integration.sh --no-build
+
+# 另一个进程启动前端生产包 + Nginx（默认监听 0.0.0.0:5173）
+bash scripts/arena-run-frontend-nginx.sh
+```
+
+验证当前确实是 Nginx 生产包：
+
+```bash
+curl -I http://127.0.0.1:5173/        # 响应头应包含 Server: nginx 与 X-Frontend-Mode: production-nginx
+curl -s 'http://127.0.0.1:5173/api/v1/sentinel/bootstrap?_monitor_role=dash' | head -c 300
+```
+
+Arena 沙箱通常没有系统 Nginx，脚本会自动从 GitHub 源码编译轻量 Nginx 到 `/tmp/nginx-monitor-prod`；如需改端口或后端地址：
+
+```bash
+PORT=8088 BACKEND_TARGET=http://127.0.0.1:8080 bash scripts/arena-run-frontend-nginx.sh
+```
+
+完整说明见 [Arena 前端正式启动手册](docs/arena-frontend-nginx-runbook.md)。
+
+### 4. 启动服务端 Demo（可选）
 
 服务端需要：
 
@@ -149,7 +176,7 @@ Demo Token：
 
 > Token 仅用于本地演示。生产环境应接入 SSO 并换取短时效用户 Token。
 
-### 4. 使用预构建 Docker 开发镜像
+### 5. 使用预构建 Docker 开发镜像
 
 如果机器已安装 Docker，可以完全跳过宿主机的 JDK、Maven 和后端依赖安装。开发镜像内置 JDK 25、Maven 3.9.12，并预热 Demo 与生产集成所需的 Maven 依赖。
 
@@ -175,7 +202,7 @@ docker run --rm -p 8080:8080 monitor-backend
 
 > Docker 镜像存放在远程 GHCR 才能跨机器或新 Session 复用；仅存在于本机 Docker daemon 的镜像不会随临时环境自动保留。
 
-### 5. 在 Arena 沙箱启动服务端
+### 6. 在 Arena 沙箱启动服务端
 
 Arena 沙箱没有 JDK/Maven/Docker，出网也受限。这里的方案是：**编译打包走 GitHub Actions（Temurin JDK 25），产物经专用 git 分支带回沙箱，再用 PyPI 的 `jdk4py`（Java 25 运行时）启动 jar**。
 
@@ -238,7 +265,8 @@ mvn spring-boot:run
 | `npm run dev` | 启动 Vite 开发服务器 |
 | `npm run typecheck` | 执行前端 TypeScript 类型检查 |
 | `npm run build` | 类型检查并执行 Vite 生产构建 |
-| `npm run preview` | 预览生产构建 |
+| `npm run preview` | 使用 Vite 预览生产构建 |
+| `bash scripts/arena-run-frontend-nginx.sh` | 构建前端并用 Nginx 托管 `dist/`，同时代理 `/api` 到后端 |
 | `mvn spring-boot:run -Dspring-boot.run.profiles=demo` | 启动无中间件依赖的服务端 Demo |
 | `mvn test` | 运行服务端测试 |
 | `mvn package` | 打包服务端 |
@@ -278,6 +306,7 @@ mvn spring-boot:run
 │   └── README.md
 ├── docs/
 │   ├── arena-backend-runbook.md
+│   ├── arena-frontend-nginx-runbook.md # Arena 前端生产包 + Nginx 启动手册
 │   └── monitor-api.md          # 完整 API 设计文档
 └── scripts/                    # 沙箱/CI 辅助脚本
 ```
@@ -296,6 +325,7 @@ mvn spring-boot:run
 ## 相关文档
 
 - [服务端实现说明](backend/README.md)
+- [Arena 前端正式启动手册](docs/arena-frontend-nginx-runbook.md)
 - [完整 API 设计文档](docs/monitor-api.md)
 - 前端启动后可从侧边栏进入“接口文档”查看可搜索版本
 

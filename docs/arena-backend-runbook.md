@@ -70,11 +70,19 @@ curl -s -H 'Authorization: Bearer dash-token' \
   'http://127.0.0.1:8080/api/v1/orders/TEST-ORDER-9' | head -c 400
 ```
 
-前端预览（Arena 中另起 vite dev server，/api 自动代理到 8080）：
+前端正式效果预览（Arena 中另起 Nginx 生产包，/api 自动代理到 8080）：
 
 ```bash
-cd frontend && npm install && npm run dev   # 0.0.0.0:5173，allowedHosts 已含 .e2b.app
+bash scripts/arena-run-frontend-nginx.sh    # npm run build -> Nginx 托管 frontend/dist，0.0.0.0:5173
 ```
+
+如只是开发调试前端，仍可使用 Vite：
+
+```bash
+cd frontend && npm install && npm run dev   # Vite dev server，0.0.0.0:5173，allowedHosts 已含 .e2b.app
+```
+
+正式前端启动细节见 [Arena 前端正式启动手册](arena-frontend-nginx-runbook.md)。
 
 ### demo 模式 —— 无中间件降级（原验证形态，保持不变）
 

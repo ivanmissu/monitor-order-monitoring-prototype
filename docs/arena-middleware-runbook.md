@@ -4,7 +4,7 @@
 > 按本文档操作即可。覆盖：架构形态、一键启动、分步手动启动、数据种子、CI 产物链路、
 > 冒烟验证、以及本沙箱特有的全部坑（都已修好或给出绕法）。
 >
-> 配套文档：`docs/arena-backend-runbook.md`（demo 模式与沙箱网络背景）、`docs/monitor-api.md`（API 明细）。
+> 配套文档：`docs/arena-backend-runbook.md`（demo 模式与沙箱网络背景）、`docs/arena-frontend-nginx-runbook.md`（前端生产包 + Nginx 正式启动）、`docs/monitor-api.md`（API 明细）。
 
 ---
 
@@ -162,10 +162,26 @@ TZ=Asia/Shanghai JAVA_OPTS="-Xms256m -Xmx1024m" \
 
 ### 4.4 前端（可选，5173）
 
+验证正式启动效果时，推荐使用生产构建 + Nginx，而不是 Vite dev server：
+
+```bash
+bash scripts/arena-run-frontend-nginx.sh
+# npm run build -> Nginx 托管 frontend/dist，/api 代理到 8080，监听 0.0.0.0:5173
+```
+
+确认当前是正式前端：
+
+```bash
+curl -I http://127.0.0.1:5173/  # Server: nginx + X-Frontend-Mode: production-nginx
+```
+
+如只做前端开发调试，仍可使用：
+
 ```bash
 cd frontend && npm install && npm run dev
-# /api 代理到 8080，浏览器开 http://localhost:5173
 ```
+
+完整说明见 `docs/arena-frontend-nginx-runbook.md`。
 
 ---
 

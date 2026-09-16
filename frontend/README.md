@@ -45,8 +45,33 @@ npm ci
 npm run dev        # Vite dev server，默认绑定 0.0.0.0
 npm run typecheck  # TypeScript 类型检查
 npm run build      # 类型检查 + 生产构建
-npm run preview    # 预览 dist 产物
+npm run preview    # 使用 Vite 预览 dist 产物
 ```
+
+## 生产包 + Nginx 正式启动
+
+验证正式部署效果时不要使用 `npm run dev`。推荐先启动后端 `8080`，再从仓库根目录执行：
+
+```bash
+bash scripts/arena-run-frontend-nginx.sh
+```
+
+脚本会执行 `npm run build`，然后用 Nginx 托管 `frontend/dist`，并将 `/api`、`/actuator` 反向代理到 `http://127.0.0.1:8080`。Arena 沙箱若没有系统 Nginx，脚本会自动从 GitHub 编译轻量 Nginx 到 `/tmp/nginx-monitor-prod`。
+
+常用覆盖项：
+
+```bash
+PORT=8088 BACKEND_TARGET=http://127.0.0.1:8080 bash scripts/arena-run-frontend-nginx.sh
+bash scripts/arena-run-frontend-nginx.sh --no-build  # 复用已有 frontend/dist
+```
+
+验证响应头：
+
+```bash
+curl -I http://127.0.0.1:5173/  # Server: nginx + X-Frontend-Mode: production-nginx
+```
+
+详见 `docs/arena-frontend-nginx-runbook.md`。
 
 ## API 接入约定
 
