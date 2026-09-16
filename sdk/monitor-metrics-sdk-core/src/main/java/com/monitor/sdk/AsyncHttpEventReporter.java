@@ -229,7 +229,25 @@ public final class AsyncHttpEventReporter implements EventReporter {
                     return batch;
                 }
                 batch.add(first);
-                queue.drainTo(batch, config.getBatchSize() - 1);
+
+                // 第一条到达后再给后续事件一个完整 flush 窗口。此前直接 drain 会令
+                // 高频流量退化为单条请求，并违背“2 秒或满批即发送”的批处理语义。
+                long deadline = System.nanoTime() + config.getFlushInterval().toNanos();
+                while (batch.size() < config.getBatchSize()) {
+                    queue.drainTo(batch, config.getBatchSize() - batch.size());
+                    if (batch.size() >= config.getBatchSize()) {
+                        break;
+                    }
+                    long remaining = deadline - System.nanoTime();
+                    if (remaining <= 0L) {
+                        break;
+                    }
+                    MonitorEvent next = queue.poll(remaining, TimeUnit.NANOSECONDS);
+                    if (next == null) {
+                        break;
+                    }
+                    batch.add(next);
+                }
             } catch (InterruptedException ex) {
                 // close() 用 interrupt 唤醒等待中的线程；不要重新设置中断标记，
                 // 否则在非关闭场景会造成 poll 的忙循环。
