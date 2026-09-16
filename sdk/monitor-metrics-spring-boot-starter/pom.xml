@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.monitor</groupId>
+        <artifactId>monitor-metrics-sdk</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>monitor-metrics-spring-boot-starter</artifactId>
+    <name>Monitor metrics SDK · Spring Boot Starter</name>
+    <description>自动装配 MonitorEventPublisher，并在事务提交后异步上报指标事件。</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.monitor</groupId>
+            <artifactId>monitor-metrics-sdk-core</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <!-- 由接入方的 Spring Boot 应用提供，避免 Starter 强行覆盖其 Boot 版本。 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-autoconfigure</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-tx</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

@@ -24,3 +24,6 @@ pnpm-debug.log*
 .vscode/
 .DS_Store
 Thumbs.db
+
+# SDK build output
+sdk/**/target/

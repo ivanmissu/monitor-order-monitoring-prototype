@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.monitor</groupId>
+        <artifactId>monitor-metrics-sdk</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>monitor-metrics-sdk-core</artifactId>
+    <name>Monitor metrics SDK · Core</name>
+    <description>零第三方运行时依赖的异步 HTTP 指标事件上报客户端。</description>
+
+    <properties>
+        <!-- Core 可被 Java 8+ 业务服务和 Java Agent 共用。 -->
+        <maven.compiler.release>8</maven.compiler.release>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${junit.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>
