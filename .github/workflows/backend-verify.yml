@@ -44,10 +44,21 @@ jobs:
             clean package
 
       - name: Build SDK modules
+        shell: bash
         run: |
+          set -o pipefail
+          LOG="${RUNNER_TEMP}/sdk-build.log"
           mvn --batch-mode --no-transfer-progress \
             -f sdk/pom.xml \
-            clean verify
+            clean verify 2>&1 | tee "$LOG"
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            # Arena 沙箱无法直连 Actions 原始日志；将末尾输出转为 Check 注释，便于快速定位。
+            tail -n 40 "$LOG" | while IFS= read -r line; do
+              echo "::error title=SDK build::$line"
+            done
+            exit "$status"
+          fi
 
       - name: Start demo profile and verify APIs
         shell: bash
