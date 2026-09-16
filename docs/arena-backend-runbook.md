@@ -29,6 +29,57 @@ Arena 沙箱是一个**受限网络环境**，与本地开发机不同：
 
 ## 快速启动（推荐：直接跑脚本）
 
+### integration 模式 —— 真实接入全部中间件（本次交付的验证形态）
+
+```bash
+bash scripts/arena-run-integration.sh            # 触发/等待 CI → 起中间件 → 启动
+bash scripts/arena-run-integration.sh --fresh    # 清库重新播种
+bash scripts/arena-run-integration.sh --no-build # 用产物分支现有 jar
+```
+
+integration profile 下 README 技术栈的中间件全部真实生效（不再有内存 DemoStore 降级）：
+
+| 中间件 | 沙箱内实现 | 接入方式 |
+| --- | --- | --- |
+| ClickHouse | `chdb` 26.7（ClickHouse 官方嵌入式引擎，PyPI）+ `scripts/arena-ch-gateway.py` 模拟 8123 HTTP | ClickHouse JDBC V2（`jdbc:ch://127.0.0.1:8123/monitor`），`ClickHouseStore` 全部 ~36 条 SQL 经网关实测通过 |
+| Redis | `redislite`（PyPI 包内置官方 redis-server 6.2.14 二进制），端口 6379 | Spring Data Redis（Lettuce），`RedisIdempotencyStore` 幂等去重 |
+| Kafka | 进程内嵌 KRaft broker（`EmbeddedKafkaKRaftBroker`，`integration/IntegrationConfig.java`），端口 9092 | spring-kafka 生产/消费，`EventConsumer` 全链路校验入库 |
+| Caffeine | JVM 内嵌 | `CachingMonitorStore`（`@Primary` 装饰器，查询 TTL 15s） |
+
+应用启动后自动完成：DDL 建表（本地化转换：单副本引擎、去用户授权）→ 14 天 × 24000 事件/天种子数据（经 4 级物化视图上卷，25 万 ODS 行实测 17 秒）→ `DemoEventProducer` 持续投递实时事件。
+
+冒烟验证（另开终端）：
+
+```bash
+# 看板漏斗（dash-token 只读）
+curl -s -H 'Authorization: Bearer dash-token' \
+  'http://127.0.0.1:8080/api/v1/dashboard/funnel?from=2026-09-10&to=2026-09-16' | head -c 400
+# 活动告警
+curl -s -H 'Authorization: Bearer dash-token' \
+  'http://127.0.0.1:8080/api/v1/alerts?status=firing' | head -c 400
+# 实时事件接入（经 Kafka → 校验 → ClickHouse ODS 全链路；eventTime 为必填业务时间）
+curl -s -XPOST -H 'Authorization: Bearer ingest-token' -H 'Content-Type: application/json' \
+  -d '{"events":[{"eventId":"test-evt-1","eventType":"order_created","eventTime":"2026-09-16T15:30:00+08:00","orderId":"TEST-ORDER-9","bizLine":"express","cityId":110000,"seatType":"v6","amount":1000}]}' \
+  'http://127.0.0.1:8080/api/v1/ingest/events'
+# 事件回查（ClickHouseStore.order，验证 ODS 落库）
+curl -s -H 'Authorization: Bearer dash-token' \
+  'http://127.0.0.1:8080/api/v1/orders/TEST-ORDER-9' | head -c 400
+```
+
+前端预览（Arena 中另起 vite dev server，/api 自动代理到 8080）：
+
+```bash
+cd frontend && npm install && npm run dev   # 0.0.0.0:5173，allowedHosts 已含 .e2b.app
+```
+
+### demo 模式 —— 无中间件降级（原验证形态，保持不变）
+
+```bash
+bash scripts/arena-run-backend.sh
+```
+
+
+
 ```bash
 bash scripts/arena-run-backend.sh
 ```

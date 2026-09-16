@@ -344,7 +344,7 @@ public class ClickHouseStore implements MonitorStore {
                        min(dt) AS dt, count() AS event_cnt,
                        countIf(event_type = 'order_delivered') AS delivered
                 FROM ods_order_event
-                WHERE order_id = ? AND dt >= today() - 90
+                WHERE order_id = ? AND ods_order_event.dt >= today() - 90
                 GROUP BY order_id
                 """, (rs, i) -> {
             int cnt = rs.getInt("event_cnt");
@@ -621,6 +621,21 @@ public class ClickHouseStore implements MonitorStore {
 
     @Override
     public AlertStatsRow alertStats(String week) {
+        // 周报参数为 ISO 周格式（2026-W38）；ClickHouse 无原生 ISO 周解析，
+        // 在 Java 侧拆解为 (年, 周) 两个可绑定整数，避免字符串日期解析失败
+        int year;
+        int isoWeek;
+        try {
+            String[] parts = (week == null
+                    ? java.time.LocalDate.now(TimeRange.ZONE).getYear() + "-W"
+                            + String.format("%02d", java.time.LocalDate.now(TimeRange.ZONE)
+                            .get(java.time.temporal.WeekFields.ISO.weekOfWeekBasedYear()))
+                    : week).split("-W");
+            year = Integer.parseInt(parts[0].trim());
+            isoWeek = Integer.parseInt(parts[1].trim());
+        } catch (RuntimeException ex) {
+            throw ApiException.invalidParam("week 需为 ISO 周格式，如 2026-W38");
+        }
         return aggJdbc.query("""
                 SELECT toInt32(count())                                        AS fired,
                        toInt32(countIf(judgement = 'VALID'))                   AS valid,
@@ -628,7 +643,7 @@ public class ClickHouseStore implements MonitorStore {
                        toInt32(quantile(0.5)(mttr_sec))                        AS mttr,
                        avgIf(mtta_sec <= 300, level = 'P0')                    AS p0_ack
                 FROM alert_event
-                WHERE toISOWeek(fired_at) = toISOWeek(parseDateTimeBestEffort(?))
+                WHERE toYear(fired_at) = ? AND toISOWeek(fired_at) = ?
                 """, (rs, i) -> {
             int fired = rs.getInt("fired");
             int valid = rs.getInt("valid");
@@ -636,7 +651,7 @@ public class ClickHouseStore implements MonitorStore {
             return new AlertStatsRow(week, fired, valid, precision, 0.80,
                     fired == 0 ? 0 : 1 - precision, rs.getInt("mtta"), rs.getInt("mttr"),
                     rs.getDouble("p0_ack"), List.of(), Map.of());
-        }, week).stream().findFirst().orElseThrow(() -> ApiException.notFound("周报 " + week));
+        }, year, isoWeek).stream().findFirst().orElseThrow(() -> ApiException.notFound("周报 " + week));
     }
 
     // ── 元监控 ────────────────────────────────────────────────────────────

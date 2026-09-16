@@ -17,6 +17,75 @@ public class MonitorProperties {
     private Query query = new Query();
     private Ingest ingest = new Ingest();
     private Alert alert = new Alert();
+    private Cache cache = new Cache();
+    private Integration integration = new Integration();
+
+    /** 读侧 Caffeine 查询缓存（demo / integration / 生产均默认启用）。 */
+    public static class Cache {
+        /** 热点只读查询的 TTL 秒数；0 表示关闭缓存装饰器。 */
+        private int queryTtlSeconds = 15;
+        private int maximumSize = 1024;
+
+        public int getQueryTtlSeconds() {
+            return queryTtlSeconds;
+        }
+
+        public void setQueryTtlSeconds(int v) {
+            this.queryTtlSeconds = v;
+        }
+
+        public int getMaximumSize() {
+            return maximumSize;
+        }
+
+        public void setMaximumSize(int v) {
+            this.maximumSize = v;
+        }
+    }
+
+    /** integration profile：内嵌 Kafka 演示生产器与 ClickHouse 种子数据规模。 */
+    public static class Integration {
+        /** 每轮向 biz.order.event 投递的订单生命周期笔数。 */
+        private int producerRounds = 3;
+        /** 生产轮询间隔毫秒。 */
+        private long producerIntervalMs = 4_000;
+        /** ODS 历史回放天数；0 关闭。 */
+        private int seedDays = 14;
+        /** 每日回放事件量。 */
+        private int seedEventsPerDay = 24_000;
+
+        public int getProducerRounds() {
+            return producerRounds;
+        }
+
+        public void setProducerRounds(int v) {
+            this.producerRounds = v;
+        }
+
+        public long getProducerIntervalMs() {
+            return producerIntervalMs;
+        }
+
+        public void setProducerIntervalMs(long v) {
+            this.producerIntervalMs = v;
+        }
+
+        public int getSeedDays() {
+            return seedDays;
+        }
+
+        public void setSeedDays(int v) {
+            this.seedDays = v;
+        }
+
+        public int getSeedEventsPerDay() {
+            return seedEventsPerDay;
+        }
+
+        public void setSeedEventsPerDay(int v) {
+            this.seedEventsPerDay = v;
+        }
+    }
 
     public static class Store {
         private String kind = "clickhouse";
@@ -237,5 +306,21 @@ public class MonitorProperties {
 
     public void setAlert(Alert alert) {
         this.alert = alert;
+    }
+
+    public Cache getCache() {
+        return cache;
+    }
+
+    public void setCache(Cache cache) {
+        this.cache = cache;
+    }
+
+    public Integration getIntegration() {
+        return integration;
+    }
+
+    public void setIntegration(Integration integration) {
+        this.integration = integration;
     }
 }

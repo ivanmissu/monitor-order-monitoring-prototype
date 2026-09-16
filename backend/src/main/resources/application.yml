@@ -45,6 +45,16 @@ management:
 monitor:
   timezone: Asia/Shanghai
   dict-version: "2026.09"
+  # 读侧 Caffeine 查询缓存：大盘 / 链路 / 拓扑等热点只读查询短 TTL 缓存
+  cache:
+    query-ttl-seconds: 15
+    maximum-size: 1024
+  # integration profile：内嵌 Kafka 演示事件生产器与种子数据规模
+  integration:
+    producer-rounds: 3
+    producer-interval-ms: 4000
+    seed-days: 14
+    seed-events-per-day: 24000
 
   # 读路径矩阵（§5.4）：三个只读账号 + 上报 + 管理，权限即数据源
   store:
@@ -120,3 +130,44 @@ monitor:
     kind: demo
   ingest:
     log-events: true
+---
+# 自包含集成 profile：四件中间件全部真实参与（供 Arena 沙箱 / 本地全链路联调）
+#   ClickHouse —— 双账号 HikariCP + clickhouse-jdbc 直连 127.0.0.1:8123
+#                （沙箱内由 scripts/arena-ch-gateway.py + chdb 提供真实 ClickHouse 引擎）
+#   Kafka     —— 进程内 KRaft broker（EmbeddedKafkaKraftBroker，见 IntegrationConfig），
+#                DemoEventProducer 持续产出领域事件，EventConsumer 批量消费入库
+#   Redis     —— Lettuce 连接 127.0.0.1:6379，承载事件/命令幂等（SETNX 第一道防线）
+#   Caffeine  —— 读侧查询缓存（所有 profile 默认启用，见 CachingMonitorStore）
+#
+# 启动前置：gateway(8123) 与 redis(6379) 就绪；一键脚本 scripts/arena-run-integration.sh
+spring:
+  config:
+    activate:
+      on-profile: integration
+  kafka:
+    # 真实 bootstrap 由 EmbeddedKafkaKraftBroker 启动后在 IntegrationConfig 中注入，
+    # 这里只放占位避免自动配置对 mq-01 做无谓解析
+    bootstrap-servers: 127.0.0.1:9092
+  data:
+    redis:
+      url: ${MONITOR_REDIS:redis://127.0.0.1:6379}
+monitor:
+  store:
+    kind: clickhouse
+    agg:
+      url: ${MONITOR_CH_AGG:jdbc:ch://127.0.0.1:8123/monitor}
+      username: ${MONITOR_CH_AGG_USER:grafana_dash}
+      password: ${CH_DASH_PWD:}
+    ods:
+      url: ${MONITOR_CH_ODS:jdbc:ch://127.0.0.1:8123/monitor}
+      username: ${MONITOR_CH_ODS_USER:cs_detail}
+      password: ${CH_CS_PWD:}
+  ingest:
+    log-events: true
+  integration:
+    # 演示事件生产器：每轮向 biz.order.event 投递的「订单生命周期」笔数
+    producer-rounds: 3
+    producer-interval-ms: 4000
+    # 历史数据回放规模（ODS 每日事件量 × 天数，0 关闭）
+    seed-days: 14
+    seed-events-per-day: 24000
