@@ -15,7 +15,7 @@
 set -Eeuo pipefail
 
 # --- 配置 -------------------------------------------------------------------
-BRANCH="arena/01a0a822-monitor-order-monitoring-proto"
+BRANCH="${BRANCH:-$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")}"
 ARTIFACT_BRANCH="arena-artifacts/backend-jar"
 WORKFLOW="arena-backend-artifact.yml"
 JDK4PY_VERSION="25.0.2.1"

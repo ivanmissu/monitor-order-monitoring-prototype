@@ -73,7 +73,7 @@ mvn spring-boot:run             # 默认 clickhouse profile
 
 ### 2.3 Docker 开发镜像（宿主机无需 JDK / Maven）
 
-仓库根目录的 `compose.backend.yml` 使用预装 JDK 25、Maven 3.9.12 和 Maven 依赖缓存的 GHCR 镜像：
+使用预装 JDK 25、Maven 3.9.12 和 Maven 依赖缓存的 GHCR 镜像：
 
 ```bash
 # 使用已发布镜像
@@ -81,8 +81,9 @@ docker pull ghcr.io/ivanmissu/monitor-order-monitoring-prototype-backend-dev:jav
 docker run --rm -p 8080:8080 \
   ghcr.io/ivanmissu/monitor-order-monitoring-prototype-backend-dev:java25
 
-# 或基于当前 checkout 重新构建
-docker compose -f ../compose.backend.yml up --build
+# 或基于当前 Dockerfile 重新构建
+docker build -t monitor-backend .
+docker run --rm -p 8080:8080 monitor-backend
 ```
 
 `backend/Dockerfile` 会分别预热 Demo 和生产集成依赖，并在构建阶段执行一次 Demo `package`。`.github/workflows/backend-dev-image.yml` 负责发布 `java25` 与不可变的 `sha-<commit>` 标签，并在发布后验证健康检查、值班哨和订单事件接口。
