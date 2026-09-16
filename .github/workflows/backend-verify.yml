@@ -47,6 +47,8 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
+          # GitHub Actions 默认启用 -e；先关闭，才能在失败后将日志转为 Check 注释。
+          set +e
           LOG="${RUNNER_TEMP}/sdk-build.log"
           mvn --batch-mode --no-transfer-progress \
             -f sdk/pom.xml \
