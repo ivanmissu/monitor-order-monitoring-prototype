@@ -56,7 +56,8 @@ jobs:
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
             # Arena 沙箱无法直连 Actions 原始日志；将末尾输出合并为 Check 注释，便于快速定位。
-            details="$(tail -n 100 "$LOG")"
+            details="$(grep -E '\[ERROR\]|BUILD FAILURE|Caused by:' "$LOG" | tail -n 30)"
+            [ -n "$details" ] || details="$(tail -n 25 "$LOG")"
             details="${details//'%'/'%25'}"
             details="${details//$'\r'/'%0D'}"
             details="${details//$'\n'/'%0A'}"
