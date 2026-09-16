@@ -54,10 +54,10 @@ flowchart LR
     Kafka[Kafka 领域事件] --> API
 ```
 
-开发环境下 `vite.config.ts` 已将 `/api` 反向代理到 `http://127.0.0.1:8080`（可用环境变量 `MONITOR_API_TARGET` 覆盖），浏览器端只走相对路径 `/api/v1`，不硬编码服务地址。前端接口对接代码集中在：
+开发环境下 `frontend/vite.config.ts` 已将 `/api` 反向代理到 `http://127.0.0.1:8080`（可用环境变量 `MONITOR_API_TARGET` 覆盖），浏览器端只走相对路径 `/api/v1`，不硬编码服务地址。前端接口对接代码集中在：
 
-- `src/api/client.ts`：统一 API Client、`/api/v1` 端点封装、响应外壳解包、角色 token 与口径水印响应头处理。
-- `src/api/hooks.ts`：`useApi` 数据获取 Hook（loading / error / 轮询 / 自动取消）。
+- `frontend/src/api/client.ts`：统一 API Client、`/api/v1` 端点封装、响应外壳解包、角色 token 与口径水印响应头处理。
+- `frontend/src/api/hooks.ts`：`useApi` 数据获取 Hook（loading / error / 轮询 / 自动取消）。
 - `src/api/format.ts`：展示层格式化（金额分→元、比率→百分比等）。
 
 各视图刷新策略遵循接口文档 §15：值班哨 20s、告警 30s、经营大盘/履约质量/风控 60s、接口监控拓扑 15s、客服工作台手动查询。
@@ -80,6 +80,9 @@ flowchart LR
 - npm `>= 10`
 
 ```bash
+# 进入前端目录（前端与后端分列为仓库一级子目录）
+cd frontend
+
 # 安装锁文件中声明的依赖
 npm ci
 
@@ -220,14 +223,20 @@ mvn spring-boot:run
 
 ```text
 .
-├── src/
-│   ├── App.tsx                 # 主应用及 8 个监控视图
-│   ├── ApiDocs.tsx             # 交互式 API 文档页
-│   ├── MetricLibrary.tsx       # 指标库与集成样例
-│   ├── data.ts                 # 前端大盘静态演示数据
-│   ├── metrics-data.ts         # 指标字典演示数据
-│   ├── api-doc-data.ts         # API 文档数据
-│   └── index.css               # 全局、响应式及组件样式
+├── frontend/                  # React 前端（Vite）
+│   ├── src/
+│   │   ├── App.tsx             # 主应用及 8 个监控视图
+│   │   ├── ApiDocs.tsx         # 交互式 API 文档页
+│   │   ├── MetricLibrary.tsx   # 指标库与集成样例
+│   │   ├── data.ts             # 前端大盘静态演示数据
+│   │   ├── metrics-data.ts     # 指标字典演示数据
+│   │   ├── api-doc-data.ts     # API 文档数据
+│   │   ├── api/                # 统一 API Client 与数据 Hooks
+│   │   └── index.css           # 全局、响应式及组件样式
+│   ├── index.html
+│   ├── vite.config.ts          # /api 反向代理等开发服务器配置
+│   ├── package.json
+│   └── tsconfig.json
 ├── backend/
 │   ├── src/main/java/          # Spring Boot 服务端实现
 │   ├── src/main/resources/     # 配置与 ClickHouse DDL
@@ -235,10 +244,8 @@ mvn spring-boot:run
 │   └── README.md               # 服务端实现说明
 ├── docs/
 │   └── monitor-api.md          # 完整 API 设计文档
-├── index.html
-├── vite.config.ts
-├── package.json
-└── tsconfig.json
+├── scripts/                    # 沙箱/CI 辅助脚本
+└── compose.backend.yml         # 后端开发镜像编排
 ```
 
 ## 数据与二次开发
@@ -250,7 +257,7 @@ mvn spring-boot:run
 - 修改服务端 Demo 数据：`backend/src/main/java/com/monitor/server/store/DemoStore.java`
 - 修改鉴权 Token 或基础设施连接：`backend/src/main/resources/application.yml`
 
-若要将前端接入服务端，建议先增加统一 API Client，并将当前静态数据逐步替换为 `/api/v1` 请求；开发环境可在 `vite.config.ts` 中配置 `/api` 反向代理，以避免跨域和浏览器端硬编码服务地址。
+若要将前端接入服务端，建议先增加统一 API Client，并将当前静态数据逐步替换为 `/api/v1` 请求；开发环境可在 `frontend/vite.config.ts` 中配置 `/api` 反向代理，以避免跨域和浏览器端硬编码服务地址。
 
 ## 相关文档
 

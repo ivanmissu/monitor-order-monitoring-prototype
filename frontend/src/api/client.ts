@@ -104,7 +104,12 @@ export async function apiRequest<T>(path: string, opts: RequestOptions = {}): Pr
   if (body !== undefined) headers["Content-Type"] = "application/json";
   if (idempotencyKey) headers["Idempotency-Key"] = idempotencyKey;
 
-  const res = await fetch(buildUrl(path, query), {
+  // 某些预览反向代理会剥掉 Authorization 头（后端将返回 40101）。
+  // 因此同时以 `_monitor_role` query 参数声明角色，由 Vite dev proxy 在服务端
+  // 还原为 Bearer token（见 vite.config.ts）；正常携带鉴权头的环境不受影响。
+  const url = buildUrl(path, { ...query, _monitor_role: role });
+
+  const res = await fetch(url, {
     method,
     headers,
     body: body === undefined ? undefined : JSON.stringify(body),
