@@ -8,6 +8,7 @@ on:
       - 'arena/**'
     paths:
       - "backend/**"
+      - "sdk/**"
       - ".github/workflows/backend-verify.yml"
 
 permissions:
@@ -41,6 +42,28 @@ jobs:
             -Dspring-boot.run.profiles=demo \
             -f backend/pom.xml \
             clean package
+
+      - name: Build SDK modules
+        shell: bash
+        run: |
+          set -o pipefail
+          # GitHub Actions 默认启用 -e；先关闭，才能在失败后将日志转为 Check 注释。
+          set +e
+          LOG="${RUNNER_TEMP}/sdk-build.log"
+          mvn --batch-mode --no-transfer-progress \
+            -f sdk/pom.xml \
+            clean verify 2>&1 | tee "$LOG"
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            # Arena 沙箱无法直连 Actions 原始日志；将末尾输出合并为 Check 注释，便于快速定位。
+            details="$(grep -E '\[ERROR\]|BUILD FAILURE|Caused by:' "$LOG" | tail -n 30)"
+            [ -n "$details" ] || details="$(tail -n 25 "$LOG")"
+            details="${details//'%'/'%25'}"
+            details="${details//$'\r'/'%0D'}"
+            details="${details//$'\n'/'%0A'}"
+            echo "::error title=SDK build::$details"
+            exit "$status"
+          fi
 
       - name: Start demo profile and verify APIs
         shell: bash

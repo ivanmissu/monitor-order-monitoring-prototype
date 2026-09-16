@@ -185,6 +185,16 @@ bash scripts/arena-run-backend.sh
 
 一步到位：安装 `jdk4py==25.0.2.1` → 触发/等待 CI 构建 → 用 git 取回 jar → 绑定 `0.0.0.0:8080` 启动。完整原理与手动分步、排障见 [Arena 后端启动手册](docs/arena-backend-runbook.md)。
 
+## 指标上报 SDK
+
+仓库新增 [`sdk/`](sdk/README.md)，提供与服务端 `POST /api/v1/ingest/events` 契约对齐的指标事件上报能力：
+
+- **Spring Boot Starter**：自动装配异步 `EventReporter` 与 `MonitorEventPublisher`，在业务事务 `AFTER_COMMIT` 后上报；
+- **Java Agent**：通过 `@MonitorMetricEvent` 拦截指定业务方法，无需接入 Spring Starter；
+- **Core**：零第三方运行时依赖、非阻塞队列、2s/500 条攒批、幂等键、429/5xx/网络错误指数退避。
+
+详见 [SDK 接入手册](sdk/README.md)。
+
 ## 生产模式服务端
 
 生产 Profile 默认连接 ClickHouse，并可使用 Kafka 和 Redis。启动前先创建 ClickHouse 表：
