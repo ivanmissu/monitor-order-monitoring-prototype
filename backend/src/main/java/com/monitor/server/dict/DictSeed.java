@@ -261,7 +261,7 @@ public final class DictSeed {
 
         // F 技术 / 链路
         m.add(tech("api.fail_rate", "接口失败率", "error_responses / total_requests，1 分钟窗口",
-                "sum(node_fail_cnt) / sum(request_cnt)", List.of("http_access_log", "rpc_metrics"),
+                "sum(node_fail_cnt) / nullIf(sum(request_cnt), 0)", List.of("http_access_log", "rpc_metrics"),
                 List.of("1m", "5m"), Dims.Unit.RATIO, false,
                 "来源为网关 access log + 中间件埋点，5xx 与业务异常码均计",
                 "支付回调接口失败率 >2% 持续 3min · P0"));
@@ -273,7 +273,7 @@ public final class DictSeed {
                 "sum(request_cnt) / 60", List.of("http_access_log"), List.of("1m"), Dims.Unit.COUNT,
                 true, "上游入口（网关）与下游调用（mesh 出口）双视角，跌零检测依赖此口径", null));
         m.add(tech("api.dependency_error_rate", "依赖异常率", "下游调用失败 / 下游调用总数（按服务对展开）",
-                "sum(dep_fail_cnt) / sum(dep_call_cnt)", List.of("rpc_metrics"), List.of("1m", "5m"),
+                "sum(dep_fail_cnt) / nullIf(sum(dep_call_cnt), 0)", List.of("rpc_metrics"), List.of("1m", "5m"),
                 Dims.Unit.RATIO, false,
                 "拓扑每条边一条序列：<0.1% 绿 / 0.1–2% 橙 / >2% 红；上游异常自动压制下游派生告警", null));
         m.add(tech("link.ingest_delay_p99", "事件新鲜度 P99", "P99(ingest_time − event_time), TDigest",
@@ -281,13 +281,13 @@ public final class DictSeed {
                 List.of("1m"), Dims.Unit.SEC, false,
                 "断流不会被误读为业务正常的关键防线", "ingest 延迟 P99 >5min · P0"));
         m.add(tech("link.late_event_rate", "迟到事件率", "late_event_cnt / total_events（晚于 10min）",
-                "sum(late_event_cnt) / sum(event_cnt)", List.of("consumer_metric"), G_H,
+                "sum(late_event_cnt) / nullIf(sum(event_cnt), 0)", List.of("consumer_metric"), G_H,
                 Dims.Unit.RATIO, false, "分钟表不回补，>10min 迟到由 T+1 回补兜底", null));
         m.add(tech("link.state_gap_cnt", "状态缺口数", "T+1 对账：状态机跳步缺事件的订单数",
                 "sum(state_gap_cnt)", List.of("t1_reconciler"), List.of("1d"), Dims.Unit.COUNT,
                 false, "监控自己的漏计量", null));
         m.add(tech("link.alert_precision", "告警有效率", "有效认领 / 触发总数，周报口径",
-                "sum(alert_valid_cnt) / sum(alert_fired_cnt)", List.of("alert_user_action"),
+                "sum(alert_valid_cnt) / nullIf(sum(alert_fired_cnt), 0)", List.of("alert_user_action"),
                 List.of("1d"), Dims.Unit.RATIO, true,
                 "验收线 >80%；未达标前不扩规则", null));
 

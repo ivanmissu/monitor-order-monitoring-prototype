@@ -30,3 +30,4 @@ sdk/**/target/
 
 # Business system demo build output
 business-system-demo/target/
+scripts/__pycache__/

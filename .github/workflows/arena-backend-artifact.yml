@@ -1,9 +1,14 @@
 name: Arena backend artifact
 
-# 在 GitHub Actions 上用 Temurin JDK 25 编译打包后端 demo jar。
+# 在 GitHub Actions 上用 Temurin JDK 25 编译打包后端 jar（demo + integration 两份）。
 #
 # Arena 沙箱只安装 jdk4py（Java 25 JRE，无 javac），因此编译打包放在 CI 完成，
 # 沙箱只负责取回产物并运行。
+#
+#   monitor-server-demo.jar         默认构建，运行时 --spring.profiles.active=demo
+#   monitor-server-integration.jar  -P integration-bundle（生产中间件依赖 + 内嵌 KRaft
+#                                   broker，spring-kafka-test runtime），运行时
+#                                   --spring.profiles.active=integration
 #
 # 注意：普通 upload-artifact 的下载走 Azure blob（*.blob.core.windows.net），
 # 该域名在 Arena 沙箱被防火墙拦截，无法下载。GitHub Releases 资源域名同样不可达。
@@ -34,9 +39,9 @@ env:
 
 jobs:
   build:
-    name: Build demo jar (JDK 25)
+    name: Build demo + integration jars (JDK 25)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       - name: Check out repository
@@ -54,22 +59,38 @@ jobs:
           java -version
           mvn -version
 
-      - name: Build demo jar
+      - name: Build integration jar (real middleware + embedded KRaft)
+        run: |
+          mvn --batch-mode --no-transfer-progress \
+            -P integration-bundle \
+            -f backend/pom.xml \
+            clean package
+
+      - name: Stage integration jar
+        run: |
+          mkdir -p staging
+          cp "$JAR_PATH" staging/monitor-server-integration.jar
+
+      - name: Build demo jar (no-middleware fallback)
         run: |
           mvn --batch-mode --no-transfer-progress \
             -Dspring-boot.run.profiles=demo \
             -f backend/pom.xml \
             clean package
 
-      - name: Upload runnable jar (web download)
+      - name: Stage demo jar
+        run: |
+          cp "$JAR_PATH" staging/monitor-server-demo.jar
+
+      - name: Upload runnable jars (web download)
         uses: actions/upload-artifact@v4
         with:
-          name: monitor-server-demo
-          path: ${{ env.JAR_PATH }}
+          name: monitor-server-jars
+          path: staging/
           if-no-files-found: error
           retention-days: 7
 
-      - name: Publish jar to artifact branch (git-reachable)
+      - name: Publish jars to artifact branch (git-reachable)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GIT_AUTHOR_NAME: github-actions[bot]
@@ -80,7 +101,14 @@ jobs:
           set -Eeuo pipefail
 
           WORK="$(mktemp -d)"
-          cp "$JAR_PATH" "$WORK/monitor-server-demo.jar"
+          cp staging/monitor-server-demo.jar "$WORK/"
+
+          # integration jar 内嵌 Kafka 服务端（EmbeddedKafkaKraftBroker）体积 ~165MB，
+          # 超过 git 推送单文件 100MB 上限，切成 <95MB 分片，沙箱端按序重组。
+          split -b 95m -d --additional-suffix=.part \
+            staging/monitor-server-integration.jar "$WORK/ig-part."
+          sha256sum staging/monitor-server-integration.jar | awk '{print $1}' \
+            > "$WORK/INTEGRATION_SHA256"
 
           # 记录来源提交，便于核对产物与源码是否一致。
           cat >"$WORK/BUILD_INFO.txt" <<EOF
@@ -88,16 +116,16 @@ jobs:
           source_ref=${GITHUB_REF}
           run_id=${GITHUB_RUN_ID}
           built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          jar=monitor-server-demo.jar
+          jars=monitor-server-demo.jar + monitor-server-integration.jar(ig-part.*.part 分片重组)
           java=25 (temurin, build); jdk4py 25.0.2.1 (sandbox, run)
           EOF
 
           cd "$WORK"
           git init -q
           git checkout -q -b "$ARTIFACT_BRANCH"
-          git add monitor-server-demo.jar BUILD_INFO.txt
-          git commit -q -m "build: demo jar from ${GITHUB_SHA}"
+          git add BUILD_INFO.txt INTEGRATION_SHA256 monitor-server-demo.jar ig-part.*.part
+          git commit -q -m "build: demo + integration jars from ${GITHUB_SHA}"
           git push -q --force \
             "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
             "HEAD:refs/heads/${ARTIFACT_BRANCH}"
-          echo "Pushed jar to branch ${ARTIFACT_BRANCH}"
+          echo "Pushed jars to branch ${ARTIFACT_BRANCH}"

@@ -51,6 +51,12 @@
             <artifactId>spring-boot-starter-jdbc</artifactId>
         </dependency>
 
+        <!-- 本地查询缓存：全构建可用（纯 Java 依赖，demo 也启用，见 CachingMonitorStore） -->
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
@@ -100,9 +106,37 @@
                     <groupId>org.springframework.kafka</groupId>
                     <artifactId>spring-kafka</artifactId>
                 </dependency>
+            </dependencies>
+        </profile>
+
+        <!--
+          自包含集成构建（CI 用 -P integration-bundle 打 monitor-server-integration.jar）：
+          生产中间件依赖 + 内嵌 KRaft Kafka broker（spring-kafka-test / kafka-server），
+          配合 scripts/arena-run-integration.sh 在沙箱内以 profile=integration 起全链路联调。
+          注意：显式 -P 会关闭 activeByDefault 的 production-integrations，
+          因此这里必须完整重复生产依赖，再叠加内嵌 broker。
+        -->
+        <profile>
+            <id>integration-bundle</id>
+            <dependencies>
                 <dependency>
-                    <groupId>com.github.ben-manes.caffeine</groupId>
-                    <artifactId>caffeine</artifactId>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-starter-data-redis</artifactId>
+                </dependency>
+                <dependency>
+                    <groupId>com.clickhouse</groupId>
+                    <artifactId>clickhouse-jdbc</artifactId>
+                    <version>${clickhouse.version}</version>
+                </dependency>
+                <dependency>
+                    <groupId>org.springframework.kafka</groupId>
+                    <artifactId>spring-kafka</artifactId>
+                </dependency>
+                <!-- 仅 integration profile 装配 EmbeddedKafkaKraftBroker（见 IntegrationConfig）。
+                     必须是 compile scope：IntegrationConfig 源码直接引用其类，runtime 不进编译期 classpath。 -->
+                <dependency>
+                    <groupId>org.springframework.kafka</groupId>
+                    <artifactId>spring-kafka-test</artifactId>
                 </dependency>
             </dependencies>
         </profile>
@@ -126,6 +160,10 @@
                             <excludes>
                                 <exclude>**/engine/EventConsumer.java</exclude>
                                 <exclude>**/common/RedisIdempotencyStore.java</exclude>
+                                <!-- integration profile 专属类依赖 spring-kafka / kafka-server，
+                                     demo 构建不含这些依赖，一并排除 -->
+                                <exclude>**/integration/IntegrationConfig.java</exclude>
+                                <exclude>**/integration/DemoEventProducer.java</exclude>
                             </excludes>
                         </configuration>
                     </plugin>

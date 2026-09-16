@@ -23,6 +23,7 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -67,6 +68,16 @@ public class ClickHouseStore implements MonitorStore {
     private record Where(String sql, List<Object> args) {
     }
 
+    /**
+     * 绑定用时间戳统一截断到整秒：agg/ods 表的时间列均为秒级 DateTime。
+     * clickhouse-jdbc V2 对带纳秒的 Timestamp（经 setObject 内联）会渲染成
+     * 'yyyy-MM-dd HH:mm:ss.SSSSSSSSS' 字符串字面量，而 ClickHouse 26.7 的
+     * 字符串→DateTime 比较拒绝任何小数秒（Code 53），故必须在应用侧截断。
+     */
+    private static Timestamp ts(Instant instant) {
+        return Timestamp.from(instant.truncatedTo(ChronoUnit.SECONDS));
+    }
+
     /** 时间列表达式：2h 由 1h 上卷。 */
     private static String timeSelect(Grain g) {
         return switch (g) {
@@ -93,8 +104,8 @@ public class ClickHouseStore implements MonitorStore {
             args.add(q.range().to().toString());
         } else {
             sb.append(" WHERE ").append(col).append(" >= ? AND ").append(col).append(" < ?");
-            args.add(Timestamp.from(q.range().from().atStartOfDay(TimeRange.ZONE).toInstant()));
-            args.add(Timestamp.from(q.range().to().plusDays(1).atStartOfDay(TimeRange.ZONE).toInstant()));
+            args.add(ts(q.range().from().atStartOfDay(TimeRange.ZONE).toInstant()));
+            args.add(ts(q.range().to().plusDays(1).atStartOfDay(TimeRange.ZONE).toInstant()));
         }
 
         if (q.bizLine() != null && !q.bizLine().isAll()) {
@@ -344,7 +355,7 @@ public class ClickHouseStore implements MonitorStore {
                        min(dt) AS dt, count() AS event_cnt,
                        countIf(event_type = 'order_delivered') AS delivered
                 FROM ods_order_event
-                WHERE order_id = ? AND dt >= today() - 90
+                WHERE order_id = ? AND ods_order_event.dt >= today() - 90
                 GROUP BY order_id
                 """, (rs, i) -> {
             int cnt = rs.getInt("event_cnt");
@@ -545,7 +556,7 @@ public class ClickHouseStore implements MonitorStore {
         }
         if (f.since() != null) {
             sb.append(" AND fired_at >= ?");
-            args.add(Timestamp.from(f.since().toInstant()));
+            args.add(ts(f.since().toInstant()));
         }
         sb.append(" ORDER BY level ASC, fired_at DESC LIMIT 500");
         return aggJdbc.query(sb.toString(), (rs, i) -> mapAlert(rs), args.toArray());
@@ -609,8 +620,8 @@ public class ClickHouseStore implements MonitorStore {
         aggJdbc.update("""
                 INSERT INTO alert_silence (silence_id, matchers, from_at, to_at, reason, owner, auto)
                 VALUES (?,?,?,?,?,?,?)
-                """, s.silenceId(), writeJson(s.matchers()), Timestamp.from(s.from().toInstant()),
-                Timestamp.from(s.to().toInstant()), s.reason(), s.owner(), s.auto());
+                """, s.silenceId(), writeJson(s.matchers()), ts(s.from().toInstant()),
+                ts(s.to().toInstant()), s.reason(), s.owner(), s.auto());
         return s;
     }
 
@@ -621,6 +632,21 @@ public class ClickHouseStore implements MonitorStore {
 
     @Override
     public AlertStatsRow alertStats(String week) {
+        // 周报参数为 ISO 周格式（2026-W38）；ClickHouse 无原生 ISO 周解析，
+        // 在 Java 侧拆解为 (年, 周) 两个可绑定整数，避免字符串日期解析失败
+        int year;
+        int isoWeek;
+        try {
+            String[] parts = (week == null
+                    ? java.time.LocalDate.now(TimeRange.ZONE).getYear() + "-W"
+                            + String.format("%02d", java.time.LocalDate.now(TimeRange.ZONE)
+                            .get(java.time.temporal.WeekFields.ISO.weekOfWeekBasedYear()))
+                    : week).split("-W");
+            year = Integer.parseInt(parts[0].trim());
+            isoWeek = Integer.parseInt(parts[1].trim());
+        } catch (RuntimeException ex) {
+            throw ApiException.invalidParam("week 需为 ISO 周格式，如 2026-W38");
+        }
         return aggJdbc.query("""
                 SELECT toInt32(count())                                        AS fired,
                        toInt32(countIf(judgement = 'VALID'))                   AS valid,
@@ -628,7 +654,7 @@ public class ClickHouseStore implements MonitorStore {
                        toInt32(quantile(0.5)(mttr_sec))                        AS mttr,
                        avgIf(mtta_sec <= 300, level = 'P0')                    AS p0_ack
                 FROM alert_event
-                WHERE toISOWeek(fired_at) = toISOWeek(parseDateTimeBestEffort(?))
+                WHERE toYear(fired_at) = ? AND toISOWeek(fired_at) = ?
                 """, (rs, i) -> {
             int fired = rs.getInt("fired");
             int valid = rs.getInt("valid");
@@ -636,7 +662,7 @@ public class ClickHouseStore implements MonitorStore {
             return new AlertStatsRow(week, fired, valid, precision, 0.80,
                     fired == 0 ? 0 : 1 - precision, rs.getInt("mtta"), rs.getInt("mttr"),
                     rs.getDouble("p0_ack"), List.of(), Map.of());
-        }, week).stream().findFirst().orElseThrow(() -> ApiException.notFound("周报 " + week));
+        }, year, isoWeek).stream().findFirst().orElseThrow(() -> ApiException.notFound("周报 " + week));
     }
 
     // ── 元监控 ────────────────────────────────────────────────────────────
@@ -718,8 +744,8 @@ public class ClickHouseStore implements MonitorStore {
         int[][] r = odsJdbc.batchUpdate(sql, events, events.size(), (ps, e) -> {
             ps.setString(1, e.eventId());
             ps.setString(2, e.eventType());
-            ps.setTimestamp(3, Timestamp.from(e.eventTime().toInstant()));
-            ps.setTimestamp(4, Timestamp.from(e.ingestTime().toInstant()));
+            ps.setTimestamp(3, ts(e.eventTime().toInstant()));
+            ps.setTimestamp(4, ts(e.ingestTime().toInstant()));
             ps.setString(5, e.orderId());
             ps.setString(6, e.tripId() == null ? "" : e.tripId());
             ps.setLong(7, e.cityId() == null ? 0L : e.cityId());
@@ -730,7 +756,10 @@ public class ClickHouseStore implements MonitorStore {
             ps.setString(12, writeJson(e.props()));
             ps.setLong(13, e.version() == null ? 1L : e.version());
         });
-        return java.util.Arrays.stream(r).flatMapToInt(java.util.Arrays::stream).sum();
+        // JDBC 批量约定：行计数 < 0 表示 SUCCESS_NO_INFO(-2)（clickhouse-jdbc V2 对
+        // 批量 INSERT 恒返回 -2），此时按提交行数计，避免 accepted 显示为负数。
+        return java.util.Arrays.stream(r).flatMapToInt(java.util.Arrays::stream)
+                .map(n -> n < 0 ? 1 : n).sum();
     }
 
     @Override
