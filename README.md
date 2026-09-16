@@ -2,7 +2,7 @@
 
 Monitor 是一个**旁路式订单业务监控平台原型**，面向研发值班、运营、客服与风控人员，覆盖司机端、转单端、顺风车、代驾、接送机等业务线。仓库同时包含可交互的 React 前端、Spring Boot 服务端、ClickHouse 表结构以及完整的 API 设计文档。
 
-> 当前前端使用仓库内的静态演示数据，可不启动服务端直接体验；服务端提供独立的 `demo` Profile，启动时无需 ClickHouse、Kafka 或 Redis。前后端请求尚未在前端代码中接通。
+> 前端已完成与服务端 `/api/v1` 接口的对接（统一 API Client + 数据 Hooks，见 `src/api/`）：启动服务端后各视图自动读取实时接口数据，页面右上角显示「实时接口」徽标；**服务端不可达时自动回退到仓库内静态演示数据**（徽标显示「演示数据」），因此仍可不启动服务端直接浏览原型。服务端提供独立的 `demo` Profile，启动时无需 ClickHouse、Kafka 或 Redis。
 
 ## 功能概览
 
@@ -45,13 +45,22 @@ Monitor 是一个**旁路式订单业务监控平台原型**，面向研发值�
 ```mermaid
 flowchart LR
     Browser[浏览器] --> UI[React / Vite 前端]
-    UI --> Mock[src/data.ts 等静态演示数据]
-    UI -. 待接入 .-> API[Spring Boot API]
+    UI --> Client[src/api Client + Hooks]
+    Client --> API[Spring Boot API]
+    Client -. 服务端不可达时回退 .-> Mock[src/data.ts 静态演示数据]
     API --> Demo[DemoStore 内存数据]
     API --> CH[(ClickHouse)]
     API --> Redis[(Redis)]
     Kafka[Kafka 领域事件] --> API
 ```
+
+开发环境下 `vite.config.ts` 已将 `/api` 反向代理到 `http://127.0.0.1:8080`（可用环境变量 `MONITOR_API_TARGET` 覆盖），浏览器端只走相对路径 `/api/v1`，不硬编码服务地址。前端接口对接代码集中在：
+
+- `src/api/client.ts`：统一 API Client、`/api/v1` 端点封装、响应外壳解包、角色 token 与口径水印响应头处理。
+- `src/api/hooks.ts`：`useApi` 数据获取 Hook（loading / error / 轮询 / 自动取消）。
+- `src/api/format.ts`：展示层格式化（金额分→元、比率→百分比等）。
+
+各视图刷新策略遵循接口文档 §15：值班哨 20s、告警 30s、经营大盘/履约质量/风控 60s、接口监控拓扑 15s、客服工作台手动查询。
 
 服务端设计遵循三条核心约束：
 
