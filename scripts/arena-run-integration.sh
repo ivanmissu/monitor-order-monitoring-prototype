@@ -81,6 +81,10 @@ if ! "$MW_VENV/bin/python" -c "import chdb" 2>/dev/null; then
   log "安装 chdb ..."
   "$MW_VENV/bin/pip" install chdb >/dev/null
 fi
+if ! "$MW_VENV/bin/python" -c "import lz4.block" 2>/dev/null; then
+  log "安装 lz4（网关 ClickHouse 压缩协议响应需要）..."
+  "$MW_VENV/bin/pip" install lz4 >/dev/null
+fi
 if [[ ! -x "$MW_VENV/bin/redis-server" ]]; then
   log "安装 redislite（自带官方 redis-server 二进制）..."
   "$MW_VENV/bin/pip" install redislite >/dev/null
