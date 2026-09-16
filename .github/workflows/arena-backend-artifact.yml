@@ -101,7 +101,14 @@ jobs:
           set -Eeuo pipefail
 
           WORK="$(mktemp -d)"
-          cp staging/monitor-server-demo.jar staging/monitor-server-integration.jar "$WORK/"
+          cp staging/monitor-server-demo.jar "$WORK/"
+
+          # integration jar 内嵌 Kafka 服务端（EmbeddedKafkaKraftBroker）体积 ~165MB，
+          # 超过 git 推送单文件 100MB 上限，切成 <95MB 分片，沙箱端按序重组。
+          split -b 95m -d --additional-suffix=.part \
+            staging/monitor-server-integration.jar "$WORK/ig-part."
+          sha256sum staging/monitor-server-integration.jar | awk '{print $1}' \
+            > "$WORK/INTEGRATION_SHA256"
 
           # 记录来源提交，便于核对产物与源码是否一致。
           cat >"$WORK/BUILD_INFO.txt" <<EOF
@@ -109,14 +116,14 @@ jobs:
           source_ref=${GITHUB_REF}
           run_id=${GITHUB_RUN_ID}
           built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          jars=monitor-server-demo.jar, monitor-server-integration.jar
+          jars=monitor-server-demo.jar + monitor-server-integration.jar(ig-part.*.part 分片重组)
           java=25 (temurin, build); jdk4py 25.0.2.1 (sandbox, run)
           EOF
 
           cd "$WORK"
           git init -q
           git checkout -q -b "$ARTIFACT_BRANCH"
-          git add BUILD_INFO.txt monitor-server-demo.jar monitor-server-integration.jar
+          git add BUILD_INFO.txt INTEGRATION_SHA256 monitor-server-demo.jar ig-part.*.part
           git commit -q -m "build: demo + integration jars from ${GITHUB_SHA}"
           git push -q --force \
             "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \

@@ -141,13 +141,22 @@ if [[ "$DO_BUILD" -eq 1 ]]; then
 fi
 
 # --- 7. 用 git 取回 integration jar（沙箱不可达 Azure blob，故走产物分支）----
+# jar 在 CI 侧按 <95MB 分片推送（绕开 git 单文件 100MB 上限），这里按序重组并校验 SHA256。
 log "从 $ARTIFACT_BRANCH 取回 monitor-server-integration.jar ..."
 git fetch origin "$ARTIFACT_BRANCH"
 mkdir -p "$(dirname "$JAR_OUT")"
-git show FETCH_HEAD:monitor-server-integration.jar > "$JAR_OUT"
-log "BUILD_INFO:"
+git ls-tree --name-only FETCH_HEAD | grep '^ig-part\.[0-9]*\.part$' | sort | \
+  while read -r p; do git show "FETCH_HEAD:$p"; done > "$JAR_OUT"
 git show FETCH_HEAD:BUILD_INFO.txt | sed 's/^/    /'
 log "jar 大小: $(du -h "$JAR_OUT" | cut -f1)"
+
+EXPECTED="$(git show FETCH_HEAD:INTEGRATION_SHA256 | awk '{print $1}')"
+ACTUAL="$(sha256sum "$JAR_OUT" | awk '{print $1}')"
+if [[ "$EXPECTED" != "$ACTUAL" ]]; then
+  log "SHA256 校验失败: expected=$EXPECTED actual=$ACTUAL"
+  exit 1
+fi
+log "SHA256 校验通过"
 
 # --- 8. 启动应用（profile=integration，绑定 0.0.0.0 以便 Arena 预览）---------
 # TZ=Asia/Shanghai 与 chdb 网关保持同时区：Timestamp 字面量按同口径解析，
