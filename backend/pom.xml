@@ -132,11 +132,11 @@
                     <groupId>org.springframework.kafka</groupId>
                     <artifactId>spring-kafka</artifactId>
                 </dependency>
-                <!-- 仅 integration profile 装配 EmbeddedKafkaKraftBroker（见 IntegrationConfig） -->
+                <!-- 仅 integration profile 装配 EmbeddedKafkaKraftBroker（见 IntegrationConfig）。
+                     必须是 compile scope：IntegrationConfig 源码直接引用其类，runtime 不进编译期 classpath。 -->
                 <dependency>
                     <groupId>org.springframework.kafka</groupId>
                     <artifactId>spring-kafka-test</artifactId>
-                    <scope>runtime</scope>
                 </dependency>
             </dependencies>
         </profile>
