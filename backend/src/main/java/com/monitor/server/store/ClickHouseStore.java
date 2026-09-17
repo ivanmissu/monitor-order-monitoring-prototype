@@ -380,12 +380,13 @@ public class ClickHouseStore implements MonitorStore {
     public List<OrderEventRow> orderEvents(String orderId, TimeRange range) {
         // 走 bloom_filter(order_id) 索引 + 分区裁剪；强制时间窗由 Service 层校验
         List<OrderEventRow> raw = odsJdbc.query("""
-                SELECT event_time, event_type, amount, props
+                SELECT formatDateTime(event_time, '%Y-%m-%d %H:%i:%S', 'Asia/Shanghai') AS event_time_local,
+                       event_type, amount, props
                 FROM ods_order_event FINAL
                 WHERE order_id = ? AND dt >= toDate(?) AND dt <= toDate(?)
                 ORDER BY event_time, event_id
                 """, (rs, i) -> new OrderEventRow(0,
-                clickHouseDateTime(rs.getString("event_time")),
+                clickHouseDateTime(rs.getString("event_time_local")),
                 rs.getString("event_type"), null, null,
                 rs.getLong("amount"), parseProps(rs.getString("props")), null, false),
                 orderId, range.from().toString(), range.to().toString());
