@@ -1,0 +1,131 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: monitor-backend
+  namespace: monitor
+  labels:
+    app.kubernetes.io/part-of: monitor
+    app.kubernetes.io/component: backend
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/component: backend
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: monitor-backend
+  namespace: monitor
+  labels:
+    app.kubernetes.io/part-of: monitor
+    app.kubernetes.io/component: backend
+spec:
+  # ⚠️ 副本数保持 1。应用用 @Scheduled 跑告警求值（RuleEvaluator，60s）、
+  #    T+1 对账（每天 05:00）、链路健康刷新等任务，且没有做分布式选主，
+  #    多副本会让这些任务在每个副本上重复执行 —— 重复告警、重复对账。
+  #    另外 SSE 的 AlertEventBus 是进程内列表，多副本下客户端只能收到
+  #    自己连上的那个副本产生的事件。
+  #    扩副本前请先补选主（如 ShedLock + Redis），详见部署文档第 9 节。
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: backend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/part-of: monitor
+        app.kubernetes.io/component: backend
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      # graceful shutdown：给在途请求与 Kafka 位点提交留出时间
+      terminationGracePeriodSeconds: 45
+      containers:
+        - name: backend
+          image: registry.example.com/monitor/monitor-backend:1.4.0   # ← 改成你的镜像
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: TZ
+              value: Asia/Shanghai
+            # 只激活 k8s 附加配置；不要写 demo（内存数据）或 integration（内嵌 Kafka）
+            - name: SPRING_PROFILES_ACTIVE
+              value: k8s
+            - name: SPRING_CONFIG_ADDITIONAL_LOCATION
+              value: /config/
+            - name: CH_DASH_PWD
+              valueFrom:
+                secretKeyRef:
+                  name: monitor-clickhouse-auth
+                  key: ch-dash-password
+            - name: CH_CS_PWD
+              valueFrom:
+                secretKeyRef:
+                  name: monitor-clickhouse-auth
+                  key: ch-cs-password
+            - name: JAVA_OPTS
+              value: >-
+                -XX:MaxRAMPercentage=70.0
+                -XX:+UseG1GC
+                -Duser.timezone=Asia/Shanghai
+                -Dfile.encoding=UTF-8
+          volumeMounts:
+            - name: config
+              mountPath: /config
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+          # JVM + Spring 启动较慢，用 startupProbe 兜住，避免 liveness 误杀
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 5
+            failureThreshold: 60      # 最多 5 分钟
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        - name: config
+          configMap:
+            name: monitor-backend-config
+        - name: tmp
+          emptyDir: {}

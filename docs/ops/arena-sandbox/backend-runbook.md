@@ -39,7 +39,7 @@ bash scripts/arena-run-integration.sh --no-build --keep-jar  # 用本地 jar（�
 ```
 
 > 中间件形态、分步手动启动、数据种子、jar 热修与踩坑索引见
-> **`docs/arena-middleware-runbook.md`**（「完整启动中间件」按它执行）。
+> **[`middleware-runbook.md`](middleware-runbook.md)**（「完整启动中间件」按它执行）。
 
 integration profile 下 README 技术栈的中间件全部真实生效（不再有内存 DemoStore 降级）：
 
@@ -82,7 +82,7 @@ bash scripts/arena-run-frontend-nginx.sh    # npm run build -> Nginx 托管 fron
 cd frontend && npm install && npm run dev   # Vite dev server，0.0.0.0:5173，allowedHosts 已含 .e2b.app
 ```
 
-正式前端启动细节见 [Arena 前端正式启动手册](arena-frontend-nginx-runbook.md)。
+正式前端启动细节见 [Arena 前端正式启动手册](frontend-nginx-runbook.md)。
 
 ### demo 模式 —— 无中间件降级（原验证形态，保持不变）
 

@@ -1,0 +1,177 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: monitor-frontend-nginx
+  namespace: monitor
+  labels:
+    app.kubernetes.io/part-of: monitor
+    app.kubernetes.io/component: frontend
+data:
+  # 与 deploy/docker/nginx-default.conf 保持一致；改这里可不重建镜像。
+  default.conf: |
+    map $arg__monitor_role $monitor_role_auth {
+        default "";
+        dash    "Bearer dash-token";
+        cs      "Bearer cs-token";
+        oncall  "Bearer oncall-token";
+        ingest  "Bearer ingest-token";
+        admin   "Bearer admin-token";
+    }
+
+    map $http_authorization $monitor_auth {
+        default $http_authorization;
+        ""      $monitor_role_auth;
+    }
+
+    server {
+        listen 8080;
+        server_name _;
+
+        root /usr/share/nginx/html;
+        index index.html;
+
+        gzip on;
+        gzip_types text/css application/javascript application/json image/svg+xml;
+        gzip_min_length 1024;
+
+        location = /healthz {
+            access_log off;
+            add_header Content-Type text/plain;
+            return 200 "ok\n";
+        }
+
+        location /api/ {
+            proxy_http_version 1.1;
+            proxy_set_header Host              $host;
+            proxy_set_header X-Real-IP         $remote_addr;
+            proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header Authorization     $monitor_auth;
+            proxy_set_header Connection        "";
+            proxy_buffering off;
+            proxy_cache off;
+            proxy_read_timeout 3600s;
+            proxy_send_timeout 3600s;
+            proxy_pass http://monitor-backend.monitor.svc.cluster.local:8080;
+        }
+
+        location /actuator/ {
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_pass http://monitor-backend.monitor.svc.cluster.local:8080;
+        }
+
+        location /assets/ {
+            try_files $uri =404;
+            expires 1y;
+            add_header Cache-Control "public, immutable";
+        }
+
+        location = /index.html {
+            add_header Cache-Control "no-cache, no-store, must-revalidate";
+        }
+
+        location / {
+            try_files $uri $uri/ /index.html;
+        }
+    }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: monitor-frontend
+  namespace: monitor
+  labels:
+    app.kubernetes.io/part-of: monitor
+    app.kubernetes.io/component: frontend
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/component: frontend
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: monitor-frontend
+  namespace: monitor
+  labels:
+    app.kubernetes.io/part-of: monitor
+    app.kubernetes.io/component: frontend
+spec:
+  # 前端是无状态静态服务 + 反代，可以安全多副本
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: frontend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/part-of: monitor
+        app.kubernetes.io/component: frontend
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101          # nginx 用户
+        runAsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: nginx
+          image: registry.example.com/monitor/monitor-frontend:1.4.0   # ← 改成你的镜像
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: TZ
+              value: Asia/Shanghai
+          volumeMounts:
+            - name: nginx-conf
+              mountPath: /etc/nginx/conf.d/default.conf
+              subPath: default.conf
+              readOnly: true
+            # 非 root + 只读根文件系统下，nginx 的缓存与 pid 需要可写卷
+            - name: cache
+              mountPath: /var/cache/nginx
+            - name: run
+              mountPath: /var/run
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 20
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        - name: nginx-conf
+          configMap:
+            name: monitor-frontend-nginx
+        - name: cache
+          emptyDir: {}
+        - name: run
+          emptyDir: {}

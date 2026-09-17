@@ -1,6 +1,6 @@
 // ── Monitor Server API Client ──
 //
-// 统一封装 monitor-server 的 /api/v1 读写接口（接口文档 docs/monitor-api.md）。
+// 统一封装 monitor-server 的 /api/v1 读写接口（接口文档 docs/tech/api-reference.md）。
 // 设计要点：
 //  - 走相对路径 /api/v1，由 Vite dev proxy / 生产网关反向代理到 Spring Boot，浏览器端不硬编码服务地址。
 //  - 按角色携带 Bearer token（演示态静态 token；生产由 SSO 换取短时效用户态 token）。

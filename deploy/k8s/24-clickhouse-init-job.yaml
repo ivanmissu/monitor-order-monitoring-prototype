@@ -1,0 +1,171 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  ClickHouse 初始化 Job（建库建表 + 建业务账号授权 + 自检）
+#
+#  前置：先用仓库里的 DDL 生成 ConfigMap（见部署文档第 4 步）
+#    kubectl -n monitor create configmap monitor-clickhouse-ddl \
+#      --from-file=clickhouse-ddl.sql=backend/src/main/resources/db/clickhouse-ddl.sql
+#
+#  本 Job 做了三件仓库 DDL 没法直接做的事，缺一不可：
+#
+#  ① 剥离 DDL 末尾的 CREATE USER / GRANT 段
+#     仓库 DDL 里口令写的是 '***' 占位符，直接执行会建出弱口令账号。
+#     这里只执行到第一条 CREATE USER 之前的「纯 schema」部分，账号由本 Job
+#     用 Secret 里的真实口令另行创建。
+#
+#  ② 按「运行时真实用量」授权，而不是照抄 DDL 里的 GRANT
+#     DDL 中的 GRANT 比服务端实际需要的窄，照抄会在运行期报 ACCESS_DENIED。
+#     实际用量来自 ClickHouseStore 的两个连接池（见部署文档「权限即数据源」一节）：
+#       aggDataSource(grafana_dash) 还要读 alert_*/system_*/ods_state_gap/
+#                                   ods_dirty_event，并写 alert_event/alert_silence；
+#       odsDataSource(cs_detail)    还要写 ods_order_event（事件入库走明细池）。
+#
+#  ③ 重建 dim_city 字典并显式指定账号口令
+#     DDL 里 SOURCE(ClickHouse(...)) 未指定 USER/PASSWORD，会以无口令的 default
+#     去读源表；一旦给 default 设了口令，字典就加载失败，cityRank / riskCities
+#     等 dictGet 查询随之报错。这里用 Secret 中的口令重建同名字典。
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: clickhouse-init
+  namespace: monitor
+  labels:
+    app.kubernetes.io/part-of: monitor
+    app.kubernetes.io/component: clickhouse-init
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/part-of: monitor
+        app.kubernetes.io/component: clickhouse-init
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: init
+          image: clickhouse/clickhouse-server:25.3
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: TZ
+              value: Asia/Shanghai
+            - name: CH_HOST
+              value: clickhouse.monitor.svc.cluster.local
+            - name: CH_ADMIN_PWD
+              valueFrom:
+                secretKeyRef:
+                  name: monitor-clickhouse-auth
+                  key: ch-admin-password
+            - name: CH_DASH_PWD
+              valueFrom:
+                secretKeyRef:
+                  name: monitor-clickhouse-auth
+                  key: ch-dash-password
+            - name: CH_CS_PWD
+              valueFrom:
+                secretKeyRef:
+                  name: monitor-clickhouse-auth
+                  key: ch-cs-password
+          volumeMounts:
+            - name: ddl
+              mountPath: /sql
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -Eeuo pipefail
+              ch() { clickhouse-client --host "$CH_HOST" --user default --password "$CH_ADMIN_PWD" "$@"; }
+              # 用 --queries-file 执行多语句：24.8 起 --multiquery 已废弃，
+              # --queries-file 在新老版本上行为一致，避免踩版本差异。
+              ch_file() { ch --queries-file "$1"; }
+
+              echo "==> 等待 ClickHouse 就绪"
+              for i in $(seq 1 60); do
+                if ch --query "SELECT 1" >/dev/null 2>&1; then break; fi
+                [ "$i" = 60 ] && { echo "ClickHouse 未就绪，退出"; exit 1; }
+                sleep 5
+              done
+
+              echo "==> ① 应用 schema（剥离 DDL 末尾 CREATE USER / GRANT 占位段）"
+              awk '/^CREATE USER/{exit} {print}' /sql/clickhouse-ddl.sql > /tmp/schema.sql
+              echo "    schema 语句字节数: $(wc -c < /tmp/schema.sql)"
+              ch_file /tmp/schema.sql
+
+              echo "==> ② 创建业务账号并按运行时真实用量授权"
+              cat > /tmp/grants.sql <<SQL
+              CREATE USER IF NOT EXISTS grafana_dash IDENTIFIED BY '${CH_DASH_PWD}'
+                  SETTINGS max_execution_time = 10, max_memory_usage = 2000000000;
+              CREATE USER IF NOT EXISTS cs_detail IDENTIFIED BY '${CH_CS_PWD}'
+                  SETTINGS max_execution_time = 60, max_memory_usage = 6000000000;
+
+              /* 口令可能与上次部署不同，显式对齐 Secret 当前值 */
+              ALTER USER grafana_dash IDENTIFIED BY '${CH_DASH_PWD}';
+              ALTER USER cs_detail    IDENTIFIED BY '${CH_CS_PWD}';
+
+              /* ── 聚合池 grafana_dash：读大盘 + 读写告警 ── */
+              GRANT SELECT ON monitor.agg_1m TO grafana_dash;
+              GRANT SELECT ON monitor.agg_5m TO grafana_dash;
+              GRANT SELECT ON monitor.agg_1h TO grafana_dash;
+              GRANT SELECT ON monitor.agg_1d TO grafana_dash;
+              GRANT SELECT ON monitor.ods_state_gap TO grafana_dash;
+              GRANT SELECT ON monitor.ods_dirty_event TO grafana_dash;
+              GRANT SELECT ON monitor.system_link_health TO grafana_dash;
+              GRANT SELECT ON monitor.system_pipeline_health TO grafana_dash;
+              GRANT SELECT ON monitor.system_topology_layout TO grafana_dash;
+              GRANT SELECT ON monitor.system_backfill_job TO grafana_dash;
+              /* 告警认领 / 静默：INSERT + ALTER DELETE（alert_silence 退订用 mutation） */
+              GRANT SELECT, INSERT ON monitor.alert_event TO grafana_dash;
+              GRANT SELECT, INSERT, ALTER DELETE ON monitor.alert_silence TO grafana_dash;
+              GRANT dictGet ON monitor.dim_city TO grafana_dash;
+
+              /* ── 明细池 cs_detail：客服查订单 + 事件入库 ── */
+              GRANT SELECT, INSERT ON monitor.ods_order_event TO cs_detail;
+              GRANT INSERT ON monitor.ods_dirty_event TO cs_detail;
+              GRANT dictGet ON monitor.dim_city TO cs_detail;
+              /* 物化视图链 ods → 5m/1m → 1h → 1d 由 INSERT 触发；不同 ClickHouse
+                 版本对 MV 目标表的权限校验严格程度不同，这里一并授予以免入库报
+                 ACCESS_DENIED（多授的是同库聚合表，不扩大数据面） */
+              GRANT SELECT, INSERT ON monitor.agg_5m TO cs_detail;
+              GRANT SELECT, INSERT ON monitor.agg_1m TO cs_detail;
+              GRANT SELECT, INSERT ON monitor.agg_1h TO cs_detail;
+              GRANT SELECT, INSERT ON monitor.agg_1d TO cs_detail;
+              SQL
+              ch_file /tmp/grants.sql
+
+              echo "==> ③ 重建 dim_city 字典（显式账号口令，避免 default 有口令后加载失败）"
+              cat > /tmp/dict.sql <<SQL
+              CREATE OR REPLACE DICTIONARY monitor.dim_city
+              (
+                  city_id  UInt64,
+                  name     String DEFAULT '',
+                  priority String DEFAULT 'normal'
+              )
+              PRIMARY KEY city_id
+              SOURCE(CLICKHOUSE(DB 'monitor' TABLE 'dim_city_src'
+                                USER 'default' PASSWORD '${CH_ADMIN_PWD}'))
+              LIFETIME(MIN 1 MAX 10)
+              LAYOUT(HASHED());
+              SQL
+              ch_file /tmp/dict.sql
+
+              echo "==> ④ 自检"
+              tables=$(ch --query "SELECT count() FROM system.tables WHERE database='monitor'")
+              echo "    monitor 库对象数: $tables"
+              [ "$tables" -ge 15 ] || { echo "建表数量异常，请检查上面的 DDL 报错"; exit 1; }
+
+              ch --query "SYSTEM RELOAD DICTIONARY monitor.dim_city"
+              ch --query "SELECT dictGet('monitor.dim_city','name',toUInt64(330100))" >/dev/null \
+                && echo "    dim_city 字典加载正常"
+
+              echo "    以 grafana_dash 试查聚合表..."
+              clickhouse-client --host "$CH_HOST" --user grafana_dash --password "$CH_DASH_PWD" \
+                --query "SELECT count() FROM monitor.agg_1d" >/dev/null && echo "    grafana_dash OK"
+
+              echo "    以 cs_detail 试查明细表..."
+              clickhouse-client --host "$CH_HOST" --user cs_detail --password "$CH_CS_PWD" \
+                --query "SELECT count() FROM monitor.ods_order_event" >/dev/null && echo "    cs_detail OK"
+
+              echo "==> 初始化完成"
+      volumes:
+        - name: ddl
+          configMap:
+            name: monitor-clickhouse-ddl

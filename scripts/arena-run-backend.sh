@@ -3,7 +3,7 @@
 # arena-run-backend.sh — 在 Arena 沙箱启动 Monitor 后端 demo 服务。
 #
 # 方案：编译打包走 GitHub Actions（Temurin JDK 25），产物通过专用 git 分支带回沙箱，
-#       沙箱用 jdk4py 的 Java 25 运行时（JRE）启动 jar。详见 docs/arena-backend-runbook.md。
+#       沙箱用 jdk4py 的 Java 25 运行时（JRE）启动 jar。详见 docs/ops/arena-sandbox/backend-runbook.md。
 #
 # 用法：
 #   bash scripts/arena-run-backend.sh            # 触发/等待 CI 构建 -> 取回 jar -> 启动

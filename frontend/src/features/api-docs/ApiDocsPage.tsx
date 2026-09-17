@@ -252,7 +252,7 @@ curl -H "Authorization: Bearer $MONITOR_DASH_TOKEN" \\
           <div className="doc-rail-foot">
             <BookOpen size={13} />
             <span>
-              文档 <code>docs/monitor-api.md</code>
+              文档 <code>docs/tech/api-reference.md</code>
               <br />实现 <code>backend/</code> · Spring Boot 4.1.1
             </span>
           </div>
