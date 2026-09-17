@@ -1,0 +1,6 @@
+source_commit=fbcaadb9a391371a43541abfd2b15a5f105790f5
+source_ref=refs/heads/main
+run_id=35180090514
+built_at=2026-09-17T03:57:51Z
+jars=monitor-server-demo.jar + monitor-server-integration.jar(ig-part.*.part 分片重组)
+java=25 (temurin, build); jdk4py 25.0.2.1 (sandbox, run)
