@@ -71,7 +71,7 @@ bash scripts/arena-run-frontend-nginx.sh --no-build  # 复用已有 frontend/dis
 curl -I http://127.0.0.1:5173/  # Server: nginx + X-Frontend-Mode: production-nginx
 ```
 
-详见 `docs/arena-frontend-nginx-runbook.md`。
+详见 [`docs/ops/arena-sandbox/frontend-nginx-runbook.md`](../docs/ops/arena-sandbox/frontend-nginx-runbook.md)。
 
 ## API 接入约定
 

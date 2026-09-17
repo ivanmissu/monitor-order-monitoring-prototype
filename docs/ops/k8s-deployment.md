@@ -42,7 +42,7 @@ deploy/
 `deploy/docker/backend.Dockerfile` 已按 `-P integration-bundle` 构建。该 profile 包含全部生产
 中间件依赖（ClickHouse JDBC / Redis / Kafka），额外多了内嵌 broker；由于内嵌 broker 相关
 Bean 全部标注 `@Profile("integration")`，**只要运行时不激活 `integration` profile 就不会装配**，
-生产行为不受影响，代价只是 jar 体积偏大（约 165MB）。想彻底精简见 [附录 A](#附录-a-让默认构建也能通过可选改造)。
+生产行为不受影响，代价只是 jar 体积偏大（约 165MB）。想彻底精简见 [附录 A](#附录-a让默认构建也能通过可选改造)。
 
 ### ② 后端副本数保持 1
 
@@ -625,7 +625,7 @@ kubectl -n monitor exec clickhouse-0 -- clickhouse-client --password "$ADMIN_PWD
 
 ## 相关文档
 
-- [服务端实现说明](../backend/README.md)
-- [完整 API 设计文档](./monitor-api.md)
-- [SDK 接入手册](../sdk/README.md)
-- [中间件完整启动手册（本地 integration 模式）](./arena-middleware-runbook.md)
+- [服务端实现说明](../../backend/README.md)
+- [完整 API 设计文档](../tech/api-reference.md)
+- [SDK 接入手册](../../sdk/README.md)
+- [中间件完整启动手册（本地 integration 模式）](./arena-sandbox/middleware-runbook.md)
