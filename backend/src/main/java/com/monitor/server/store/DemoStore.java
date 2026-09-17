@@ -283,6 +283,16 @@ public class DemoStore implements MonitorStore {
     private static final String DEMO_ORDER = "CP20260903018462";
 
     @Override
+    public List<RecentOrderRow> recentOrders(int limit, BizLine biz) {
+        if (!biz.isAll() && biz != BizLine.CARPOOL) {
+            return List.of();
+        }
+        return List.of(new RecentOrderRow(DEMO_ORDER, "carpool", 330100L, "杭州",
+                "completed", 8, LocalDate.of(2026, 9, 3).atTime(11, 18, 14)
+                .atZone(TimeRange.ZONE).toOffsetDateTime()));
+    }
+
+    @Override
     public Optional<OrderSnapshot> order(String orderId) {
         if (!DEMO_ORDER.equalsIgnoreCase(orderId)) {
             return Optional.empty();

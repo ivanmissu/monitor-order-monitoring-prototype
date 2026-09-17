@@ -416,6 +416,16 @@ export interface OrderView {
   privacy_note: string;
 }
 
+export interface RecentOrder {
+  order_id: string;
+  biz_line: BizLine;
+  city_id: number;
+  city_name: string;
+  status: string;
+  event_count: number;
+  updated_at: string;
+}
+
 /** 客服工作台首屏聚合契约：快照与时间线必须来自同一次实时查询。 */
 export interface OrderWorkbench {
   order: OrderView;
@@ -499,6 +509,8 @@ export const api = {
     apiRequest<RiskCity[]>("/quality/risk-cities", { role: "dash", signal }),
 
   // §08 客服工作台
+  recentOrders: (limit = 8, signal?: AbortSignal) =>
+    apiRequest<RecentOrder[]>("/orders/recent", { role: "cs", query: { limit }, signal }),
   orderWorkbench: (orderId: string, signal?: AbortSignal) =>
     apiRequest<OrderWorkbench>(`/orders/${encodeURIComponent(orderId)}/workbench`, { role: "cs", signal }),
   order: (orderId: string, signal?: AbortSignal) =>

@@ -5,6 +5,7 @@ import com.monitor.server.common.ApiResponse;
 import com.monitor.server.common.RequestContext;
 import com.monitor.server.config.MonitorProperties;
 import com.monitor.server.dict.DictSeed;
+import com.monitor.server.domain.BizLine;
 import com.monitor.server.domain.Grain;
 import com.monitor.server.domain.TimeRange;
 import com.monitor.server.security.TokenAuthFilter;
@@ -74,6 +75,27 @@ public class OrderController {
                             String driverIdHashMasked, String tripId, String dt, int eventCount,
                             Completeness completeness, List<Map<String, Object>> riskFlags,
                             String privacyNote) {
+    }
+
+    public record RecentOrderView(String orderId, String bizLine, long cityId, String cityName,
+                                  String status, int eventCount, String updatedAt) {
+    }
+
+    @GetMapping("/recent")
+    public ApiResponse<List<RecentOrderView>> recent(
+            @RequestParam(defaultValue = "8") int limit,
+            @RequestParam(name = "biz_line", defaultValue = "all") String bizLine) {
+        TokenAuthFilter.Principal principal = requireDetailPrincipal();
+        if (limit < 1 || limit > 20) {
+            throw ApiException.invalidParam("limit 必须为 1-20");
+        }
+        List<RecentOrderView> result = store.recentOrders(limit, BizLine.of(bizLine)).stream()
+                .peek(row -> principal.assertCity(row.cityId()))
+                .map(row -> new RecentOrderView(row.orderId(), row.bizLine(), row.cityId(), row.cityName(),
+                        row.status(), row.eventCount(), row.updatedAt().toString()))
+                .toList();
+        RequestContext.freshness(store.freshness());
+        return ApiResponse.ok(result);
     }
 
     @GetMapping("/{orderId}")

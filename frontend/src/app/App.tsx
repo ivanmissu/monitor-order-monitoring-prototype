@@ -20,7 +20,6 @@ const ServiceView = lazy(() => import("@/features/monitoring/views/ServiceView")
 const SystemView = lazy(() => import("@/features/monitoring/views/SystemView").then((module) => ({ default: module.SystemView })));
 const TechView = lazy(() => import("@/features/monitoring/views/TechView").then((module) => ({ default: module.TechView })));
 
-const DEFAULT_ORDER_ID = "CP20260903018462";
 const loadingFallback = <div className="panel page-loading">正在加载监控视图…</div>;
 
 export default function App() {
@@ -28,8 +27,6 @@ export default function App() {
   const [biz, setBiz] = useState<BizLine>("all");
   const [localAlerts, setLocalAlerts] = useState(initialAlerts);
   const [selectedAlert, setSelectedAlert] = useState<AlertItem | null>(null);
-  const [orderId, setOrderId] = useState(DEFAULT_ORDER_ID);
-  const [searchedOrder, setSearchedOrder] = useState(DEFAULT_ORDER_ID);
   const [ackedIds, setAckedIds] = useState<Set<number>>(new Set());
 
   // 告警列表：优先读后端 /api/v1/alerts（30s 轮询），失败回退静态演示数据。
@@ -93,14 +90,7 @@ export default function App() {
               )}
               {active === "business" && <BusinessView biz={biz} />}
               {active === "quality" && <QualityView biz={biz} />}
-              {active === "service" && (
-                <ServiceView
-                  orderId={orderId}
-                  setOrderId={setOrderId}
-                  searchedOrder={searchedOrder}
-                  search={() => setSearchedOrder(orderId || DEFAULT_ORDER_ID)}
-                />
-              )}
+              {active === "service" && <ServiceView />}
               {active === "risk" && <RiskView biz={biz} />}
               {active === "tech" && <TechView biz={biz} />}
               {active === "library" && <MetricLibraryPage biz={biz} />}

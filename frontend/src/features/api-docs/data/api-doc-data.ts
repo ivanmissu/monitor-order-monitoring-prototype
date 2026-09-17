@@ -509,6 +509,23 @@ metric=core.delivery_rate&biz_line=all&grain=1h&from=2026-09-03&to=2026-09-03" \
     lead: "直读 ODS 明细，走 bloom_filter 索引 + 强制时间窗，资源隔离避免拖垮集群。SLO：P99 < 3s。",
     endpoints: [
       {
+        method: "GET", path: "/api/v1/orders/recent", title: "最近入库订单", role: "cs_detail",
+        desc: "客服工作台进入时调用一次，从 ClickHouse ODS 返回近两日最后有事件的真实订单；前端用首项作为默认查询，不再写死演示订单号。",
+        params: [
+          { n: "limit", in: "query", t: "int", d: "默认 8，范围 1–20" },
+          { n: "biz_line", in: "query", t: "enum", d: "可选业务线，默认 all" },
+        ],
+        resp: `{
+  "code": 0,
+  "data": [
+    { "order_id": "CP2609179000205", "biz_line": "carpool", "city_id": 440100,
+      "city_name": "广州", "status": "in_progress", "event_count": 6,
+      "updated_at": "2026-09-17T10:06:44+08:00" }
+  ]
+}`,
+        note: "实时查询，不缓存；返回结果仍执行客服账号城市行权限校验。",
+      },
+      {
         method: "GET", path: "/api/v1/orders/{order_id}/workbench", title: "客服工作台首屏聚合", role: "cs_detail",
         desc: "页面主接口；在同一权限上下文与查询窗口中返回订单快照和事件时间线，避免双请求产生快照/时间线混合状态。仅在点击查询时调用，禁止轮询。",
         params: [

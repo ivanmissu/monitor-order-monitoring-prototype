@@ -1,4 +1,5 @@
-import { AlertTriangle, Check, LoaderCircle, Search, ShieldCheck } from "lucide-react";
+import { useEffect, useState } from "react";
+import { AlertTriangle, Check, Database, LoaderCircle, Search, ShieldCheck } from "lucide-react";
 import { api, ApiError } from "@/services/monitor/client";
 import { fmtClock, fmtDuration, fmtYuan } from "@/services/monitor/format";
 import { useApi } from "@/services/monitor/use-api";
@@ -9,17 +10,24 @@ const BIZ_LABEL: Record<string, string> = {
 };
 const SEAT_LABEL: Record<string, string> = {
   exclusive: "独享", shared_2: "2 座", shared_4: "4 座", two_seat: "2 座", three_seat: "3 座", all: "全部座型",
+  express: "快车", express_pool: "拼车", pickup: "接机", dropoff: "送机", designated: "代驾",
 };
 
-interface ServiceViewProps {
-  orderId: string;
-  setOrderId: (value: string) => void;
-  searchedOrder: string;
-  search: () => void;
-}
+export function ServiceView() {
+  const [orderId, setOrderId] = useState("");
+  const [searchedOrder, setSearchedOrder] = useState("");
 
-export function ServiceView({ orderId, setOrderId, searchedOrder, search }: ServiceViewProps) {
-  // 客服工作台只在用户查询时调用聚合接口，禁止轮询，也不再静默回退静态演示数据。
+  // 页面进入时从 ClickHouse 获取最近入库订单，首项作为默认查询；不再写死演示订单号。
+  const recentApi = useApi((signal) => api.recentOrders(8, signal), []);
+  useEffect(() => {
+    const latest = recentApi.data?.[0]?.order_id;
+    if (latest && !searchedOrder) {
+      setOrderId(latest);
+      setSearchedOrder(latest);
+    }
+  }, [recentApi.data, searchedOrder]);
+
+  // 客服工作台只在订单被选中/查询时调用聚合接口，禁止轮询，不回退静态演示数据。
   const workbenchApi = useApi(
     (signal) => api.orderWorkbench(searchedOrder, signal),
     [searchedOrder],
@@ -32,6 +40,15 @@ export function ServiceView({ orderId, setOrderId, searchedOrder, search }: Serv
   const timeline = current?.timeline;
   const error = workbenchApi.error as ApiError | null;
   const notFound = workbenchApi.state === "error" && error?.code === 40401;
+
+  const selectOrder = (value: string) => {
+    setOrderId(value);
+    setSearchedOrder(value);
+  };
+  const search = () => {
+    const value = orderId.trim();
+    if (value) setSearchedOrder(value);
+  };
 
   const summaryRows: [string, string][] = order ? [
     ["业务线", BIZ_LABEL[order.biz_line] || order.biz_line],
@@ -56,8 +73,26 @@ export function ServiceView({ orderId, setOrderId, searchedOrder, search }: Serv
           onKeyDown={(event) => event.key === "Enter" && search()}
           placeholder="输入订单号查询（支持全业务线，最长 90 天）"
         />
-        <button onClick={search} disabled={workbenchApi.state === "loading"}>查询订单</button>
+        <button onClick={search} disabled={!orderId.trim() || workbenchApi.state === "loading"}>查询订单</button>
       </section>
+
+      <div className="freshness-note" style={{ alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+        <Database size={15} />
+        <span>ClickHouse 最近入库订单：</span>
+        {recentApi.state === "loading" && <span>加载中…</span>}
+        {recentApi.data?.map((item) => (
+          <button
+            key={item.order_id}
+            className="text-button"
+            onClick={() => selectOrder(item.order_id)}
+            title={`${BIZ_LABEL[item.biz_line] || item.biz_line} · ${item.city_name} · ${item.event_count} 个事件 · ${fmtClock(item.updated_at)}`}
+            style={{ fontFamily: "var(--mono)", opacity: item.order_id === searchedOrder ? 1 : 0.72 }}
+          >
+            {item.order_id}
+          </button>
+        ))}
+        {recentApi.state === "error" && <span style={{ color: "#d25555" }}>近期订单接口不可用</span>}
+      </div>
 
       {workbenchApi.state === "loading" && !current && (
         <div className="freshness-note"><LoaderCircle size={15} className="spin" /><span>正在从实时接口查询订单…</span></div>
@@ -82,7 +117,7 @@ export function ServiceView({ orderId, setOrderId, searchedOrder, search }: Serv
                 <dt>事件完整性</dt>
                 <dd className={order.completeness.state === "complete" ? "complete" : undefined}>
                   {order.completeness.state === "complete" ? <Check size={13} /> : <AlertTriangle size={13} />}
-                  {order.completeness.state === "complete" ? "完整" : `缺 ${order.completeness.missing.length} 个节点`}
+                  {order.completeness.state === "complete" ? "完整" : `${order.event_count} 个事件，链路仍在进行`}
                 </dd>
               </div>
             </dl>

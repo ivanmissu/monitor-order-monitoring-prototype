@@ -32,7 +32,7 @@ X-Monitor-Dict-Version: 2026.09
 | 业务线切换器（6 值） | `GET /api/v1/dict/biz-lines` | 启动一次，缓存 1h |
 | KPI 指标带 / 数值卡 | `GET /api/v1/overview/summary` | 20s + ETag |
 | 告警列表 + 认领 | `GET /api/v1/alerts` · `POST /api/v1/alerts/{id}/ack` | SSE 推送，兜底 30s 轮询 |
-| 客服订单快照 + 事件时间线 | `GET /api/v1/orders/{id}/workbench` | 手动查询，禁止轮询 |
+| 客服近期订单 / 快照 / 时间线 | `GET /api/v1/orders/recent` · `GET /api/v1/orders/{id}/workbench` | 近期订单进入时一次；明细手动查询 |
 | 链路健康红绿灯 | `GET /api/v1/overview/link-health` | 15s 轮询 |
 | 指标库列表 / 详情 | `GET /api/v1/dict/metrics(/{metric_id})` | 10min 缓存 |
 | 集成样例 / 事件契约 | `GET /api/v1/dict/event-types` | 启动一次 |
@@ -267,17 +267,31 @@ X-Monitor-Dict-Version: 2026.09
 
 ---
 
-## 08 客服明细查询（5）
+## 08 客服明细查询（6）
 
 客服工作台禁止自动轮询，点击“查询订单”后发起一次请求。页面首选聚合接口，快照与时间线必须来自同一权限上下文和查询窗口；其余接口用于独立查询、批处理和审计导出。
 
 | 方法 | 路径 | 用途 | 约束 |
 |---|---|---|---|
+| GET | `/api/v1/orders/recent` | 最近入库真实订单候选 | 页面进入时调用一次；`limit` 1–20 |
 | GET | `/api/v1/orders/{order_id}/workbench` | 客服工作台首屏：订单快照 + 完整事件时间线 | **页面主接口**；窗口 ≤ 90 天 |
 | GET | `/api/v1/orders/{order_id}` | 订单维度快照 + 事件完整性判定 | 按订单数据中的业务线与城市鉴权 |
 | GET | `/api/v1/orders/{order_id}/events` | 事件时间线 | 窗口 ≤ 90 天；与快照执行相同城市鉴权 |
 | POST | `/api/v1/orders/lookup` | 批量查询（≤20 单） | 逐条返回，不整体失败 |
 | GET | `/api/v1/orders/{order_id}/events.ndjson` | 原始事件导出 | 写审计日志 |
+
+`GET /orders/recent` 从 `ods_order_event` 按最后事件时间倒序返回近两日订单，供客服直接选择当前真实入库数据。支持 `limit`（默认 8，最大 20）和可选 `biz_line`；该接口不缓存。响应示例：
+
+```json
+{
+  "code": 0,
+  "data": [
+    { "order_id": "CP2609179000205", "biz_line": "carpool", "city_id": 440100,
+      "city_name": "广州", "status": "in_progress", "event_count": 6,
+      "updated_at": "2026-09-17T10:06:44+08:00" }
+  ]
+}
+```
 
 `GET /orders/{id}/workbench` 请求参数：
 

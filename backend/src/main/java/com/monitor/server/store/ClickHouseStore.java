@@ -348,6 +348,34 @@ public class ClickHouseStore implements MonitorStore {
     // ── 客服明细 ──────────────────────────────────────────────────────────
 
     @Override
+    public List<RecentOrderRow> recentOrders(int limit, BizLine biz) {
+        String bizFilter = biz.isAll() ? "" : " AND biz_line = ? ";
+        String sql = """
+                SELECT order_id, biz_line, city_id,
+                       dictGet('dim_city', 'name', toUInt64(city_id)) AS city_name,
+                       event_count, delivered, updated_at
+                FROM (
+                    SELECT order_id, any(biz_line) AS biz_line, any(city_id) AS city_id,
+                           count() AS event_count,
+                           countIf(event_type = 'order_delivered') AS delivered,
+                           formatDateTime(max(event_time), '%Y-%m-%d %H:%i:%S', 'Asia/Shanghai') AS updated_at
+                    FROM ods_order_event FINAL
+                    WHERE dt >= today() - 1
+                """ + bizFilter + """
+                    GROUP BY order_id
+                    HAVING event_count >= 4
+                )
+                ORDER BY updated_at DESC
+                LIMIT ?
+                """;
+        Object[] args = biz.isAll() ? new Object[]{limit} : new Object[]{biz.id(), limit};
+        return odsJdbc.query(sql, (rs, i) -> new RecentOrderRow(
+                rs.getString("order_id"), rs.getString("biz_line"), rs.getLong("city_id"),
+                rs.getString("city_name"), rs.getInt("delivered") > 0 ? "completed" : "in_progress",
+                rs.getInt("event_count"), clickHouseDateTime(rs.getString("updated_at"))), args);
+    }
+
+    @Override
     public Optional<OrderSnapshot> order(String orderId) {
         List<OrderSnapshot> rows = odsJdbc.query("""
                 SELECT order_id, biz_line, city_id,
