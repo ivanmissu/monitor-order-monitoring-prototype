@@ -89,6 +89,13 @@ public interface MonitorStore {
 
     // ── 客服明细（ods_order_event） ────────────────────────────────────────
 
+    record RecentOrderRow(String orderId, String bizLine, long cityId, String cityName,
+                          String status, int eventCount, OffsetDateTime updatedAt) {
+    }
+
+    /** 客服工作台近期真实订单候选，按最后事件时间倒序，不缓存。 */
+    List<RecentOrderRow> recentOrders(int limit, BizLine biz);
+
     record OrderSnapshot(String orderId, String bizLine, String status, String statusLabel,
                          long cityId, String cityName, String seatType, long amountFen,
                          String driverHashMasked, String tripId, LocalDate dt, int eventCount,

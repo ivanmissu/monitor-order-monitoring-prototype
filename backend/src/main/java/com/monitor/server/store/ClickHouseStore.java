@@ -22,6 +22,7 @@ import javax.sql.DataSource;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -347,24 +348,57 @@ public class ClickHouseStore implements MonitorStore {
     // ── 客服明细 ──────────────────────────────────────────────────────────
 
     @Override
+    public List<RecentOrderRow> recentOrders(int limit, BizLine biz) {
+        String bizFilter = biz.isAll() ? "" : " AND biz_line = ? ";
+        String sql = """
+                SELECT order_id, biz_line, city_id,
+                       dictGet('dim_city', 'name', toUInt64(city_id)) AS city_name,
+                       event_count, delivered, updated_at
+                FROM (
+                    SELECT order_id, any(biz_line) AS biz_line, any(city_id) AS city_id,
+                           count() AS event_count,
+                           countIf(event_type = 'order_delivered') AS delivered,
+                           formatDateTime(max(event_time), '%Y-%m-%d %H:%i:%S', 'Asia/Shanghai') AS updated_at
+                    FROM ods_order_event FINAL
+                    WHERE dt >= today() - 1
+                """ + bizFilter + """
+                    GROUP BY order_id
+                    HAVING event_count >= 4
+                )
+                ORDER BY updated_at DESC
+                LIMIT ?
+                """;
+        Object[] args = biz.isAll() ? new Object[]{limit} : new Object[]{biz.id(), limit};
+        return odsJdbc.query(sql, (rs, i) -> new RecentOrderRow(
+                rs.getString("order_id"), rs.getString("biz_line"), rs.getLong("city_id"),
+                rs.getString("city_name"), rs.getInt("delivered") > 0 ? "completed" : "in_progress",
+                rs.getInt("event_count"), clickHouseDateTime(rs.getString("updated_at"))), args);
+    }
+
+    @Override
     public Optional<OrderSnapshot> order(String orderId) {
         List<OrderSnapshot> rows = odsJdbc.query("""
-                SELECT order_id, any(biz_line) AS biz_line, any(city_id) AS city_id,
-                       any(seat_type) AS seat_type, max(amount) AS amount,
-                       any(driver_id_hash) AS driver_hash, any(trip_id) AS trip_id,
-                       min(dt) AS dt, count() AS event_cnt,
-                       countIf(event_type = 'order_delivered') AS delivered
-                FROM ods_order_event
-                WHERE order_id = ? AND ods_order_event.dt >= today() - 90
-                GROUP BY order_id
+                SELECT order_id, biz_line, city_id,
+                       dictGet('dim_city', 'name', toUInt64(city_id)) AS city_name,
+                       seat_type, amount, driver_hash, trip_id, order_dt, event_cnt, delivered
+                FROM (
+                    SELECT order_id, any(biz_line) AS biz_line, any(city_id) AS city_id,
+                           any(seat_type) AS seat_type, max(amount) AS amount,
+                           any(driver_id_hash) AS driver_hash, any(trip_id) AS trip_id,
+                           min(dt) AS order_dt, count() AS event_cnt,
+                           countIf(event_type = 'order_delivered') AS delivered
+                    FROM ods_order_event
+                    WHERE order_id = ? AND ods_order_event.dt >= today() - 90
+                    GROUP BY order_id
+                )
                 """, (rs, i) -> {
             int cnt = rs.getInt("event_cnt");
             boolean delivered = rs.getInt("delivered") > 0;
             return new OrderSnapshot(rs.getString("order_id"), rs.getString("biz_line"),
                     delivered ? "completed" : "in_progress", delivered ? "已完成" : "进行中",
-                    rs.getLong("city_id"), null, rs.getString("seat_type"), rs.getLong("amount"),
+                    rs.getLong("city_id"), rs.getString("city_name"), rs.getString("seat_type"), rs.getLong("amount"),
                     mask(rs.getString("driver_hash")), rs.getString("trip_id"),
-                    rs.getDate("dt").toLocalDate(), cnt,
+                    rs.getDate("order_dt").toLocalDate(), cnt,
                     cnt >= 8 ? "complete" : "gap", 8, List.of());
         }, orderId);
         return rows.stream().findFirst();
@@ -374,12 +408,13 @@ public class ClickHouseStore implements MonitorStore {
     public List<OrderEventRow> orderEvents(String orderId, TimeRange range) {
         // 走 bloom_filter(order_id) 索引 + 分区裁剪；强制时间窗由 Service 层校验
         List<OrderEventRow> raw = odsJdbc.query("""
-                SELECT event_time, event_type, amount, props
+                SELECT formatDateTime(event_time, '%Y-%m-%d %H:%i:%S', 'Asia/Shanghai') AS event_time_local,
+                       event_type, amount, props
                 FROM ods_order_event FINAL
                 WHERE order_id = ? AND dt >= toDate(?) AND dt <= toDate(?)
                 ORDER BY event_time, event_id
                 """, (rs, i) -> new OrderEventRow(0,
-                rs.getTimestamp("event_time").toInstant().atZone(TimeRange.ZONE).toOffsetDateTime(),
+                clickHouseDateTime(rs.getString("event_time_local")),
                 rs.getString("event_type"), null, null,
                 rs.getLong("amount"), parseProps(rs.getString("props")), null, false),
                 orderId, range.from().toString(), range.to().toString());
@@ -806,6 +841,16 @@ public class ClickHouseStore implements MonitorStore {
     }
 
     // ── 工具 ──────────────────────────────────────────────────────────────
+
+    /**
+     * ClickHouse JDBC V2 的 getTimestamp() 会把无时区 DateTime64 当 UTC，再由 JVM 转换一次，
+     * 导致 Asia/Shanghai 时间线回退 8 小时。按 ClickHouse 返回的本地字面量解析可保持业务时区。
+     */
+    private static OffsetDateTime clickHouseDateTime(String value) {
+        return LocalDateTime.parse(value.replace(' ', 'T'))
+                .atZone(TimeRange.ZONE)
+                .toOffsetDateTime();
+    }
 
     private static String mask(String hash) {
         if (hash == null || hash.length() < 8) {

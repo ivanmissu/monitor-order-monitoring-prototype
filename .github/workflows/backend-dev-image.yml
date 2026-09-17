@@ -99,8 +99,13 @@ jobs:
 
           curl --fail --silent --show-error \
             -H "Authorization: Bearer cs-token" \
-            http://127.0.0.1:8080/api/v1/orders/CP20260903018462/events \
-            -o "${RUNNER_TEMP}/order-events.json"
+            http://127.0.0.1:8080/api/v1/orders/CP20260903018462/workbench \
+            -o "${RUNNER_TEMP}/order-workbench.json"
+
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer cs-token" \
+            'http://127.0.0.1:8080/api/v1/orders/recent?limit=8' \
+            -o "${RUNNER_TEMP}/recent-orders.json"
 
           python3 - <<'PY'
           import json
@@ -110,14 +115,16 @@ jobs:
           tmp = Path(os.environ["RUNNER_TEMP"])
           health = json.loads((tmp / "health.json").read_text())
           sentinel = json.loads((tmp / "sentinel.json").read_text())
-          events = json.loads((tmp / "order-events.json").read_text())
+          workbench = json.loads((tmp / "order-workbench.json").read_text())
+          recent_orders = json.loads((tmp / "recent-orders.json").read_text())
 
           assert health["status"] == "UP", health
           assert sentinel["code"] == 0, sentinel
-          assert events["code"] == 0, events
-          assert events["data"]["order_id"] == "CP20260903018462", events
-          assert events["data"]["events"], events
+          assert workbench["code"] == 0, workbench
+          assert workbench["data"]["order"]["order_id"] == "CP20260903018462", workbench
+          assert workbench["data"]["timeline"]["events"], workbench
+          assert recent_orders["code"] == 0 and recent_orders["data"], recent_orders
 
           print("Image smoke test passed")
-          print("Order events:", len(events["data"]["events"]))
+          print("Order events:", len(workbench["data"]["timeline"]["events"]))
           PY

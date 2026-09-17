@@ -222,6 +222,11 @@ public class CachingMonitorStore implements MonitorStore {
     // ── 明细 / 告警 / 写入：不缓存 ────────────────────────────────────────
 
     @Override
+    public List<RecentOrderRow> recentOrders(int limit, BizLine biz) {
+        return delegate.recentOrders(limit, biz);
+    }
+
+    @Override
     public Optional<OrderSnapshot> order(String orderId) {
         return delegate.order(orderId);
     }
