@@ -1,0 +1,111 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: clickhouse
+  namespace: monitor
+  labels:
+    app.kubernetes.io/part-of: monitor
+    app.kubernetes.io/component: clickhouse
+spec:
+  clusterIP: None            # StatefulSet 用 headless service 提供稳定 DNS
+  selector:
+    app.kubernetes.io/component: clickhouse
+  ports:
+    - name: http             # 后端 clickhouse-jdbc 走 HTTP 协议 8123
+      port: 8123
+      targetPort: http
+    - name: native           # clickhouse-client 原生协议
+      port: 9000
+      targetPort: native
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: clickhouse
+  namespace: monitor
+  labels:
+    app.kubernetes.io/part-of: monitor
+    app.kubernetes.io/component: clickhouse
+spec:
+  serviceName: clickhouse
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: clickhouse
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/part-of: monitor
+        app.kubernetes.io/component: clickhouse
+    spec:
+      securityContext:
+        fsGroup: 101          # clickhouse 用户，保证挂载卷可写
+      containers:
+        - name: clickhouse
+          image: clickhouse/clickhouse-server:25.3
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8123
+            - name: native
+              containerPort: 9000
+            - name: keeper
+              containerPort: 9181
+          env:
+            - name: TZ
+              value: Asia/Shanghai
+            # default 账号口令；初始化 Job 与运维用它，业务账号由 DDL 创建
+            - name: CLICKHOUSE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: monitor-clickhouse-auth
+                  key: ch-admin-password
+            # 允许 default 账号执行 CREATE USER / GRANT（初始化 Job 需要）
+            - name: CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT
+              value: "1"
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/clickhouse
+            - name: config
+              mountPath: /etc/clickhouse-server/config.d/99-monitor.xml
+              subPath: 99-monitor.xml
+          # ClickHouse 首次启动要初始化 Keeper 与系统库，给足启动时间
+          startupProbe:
+            httpGet:
+              path: /ping
+              port: http
+            periodSeconds: 5
+            failureThreshold: 60      # 最多 5 分钟
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /ping
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: "1"
+              memory: 4Gi
+            limits:
+              cpu: "4"
+              memory: 8Gi
+      volumes:
+        - name: config
+          configMap:
+            name: monitor-clickhouse-config
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        # storageClassName: <你的 StorageClass>   # 留空用集群默认
+        resources:
+          requests:
+            storage: 100Gi

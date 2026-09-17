@@ -324,6 +324,7 @@ mvn spring-boot:run
 
 ## 相关文档
 
+- [Kubernetes 部署手册](docs/k8s-deployment.md)（前端 + 后端 + ClickHouse / Kafka / Redis 完整上 K8s，含可直接 apply 的清单）
 - [服务端实现说明](backend/README.md)
 - [Arena 前端正式启动手册](docs/arena-frontend-nginx-runbook.md)
 - [完整 API 设计文档](docs/monitor-api.md)

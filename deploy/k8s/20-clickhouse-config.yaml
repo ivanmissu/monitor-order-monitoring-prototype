@@ -1,0 +1,65 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  ClickHouse 服务端配置。
+#
+#  关键点：backend/src/main/resources/db/clickhouse-ddl.sql 中的表使用
+#  Replicated*MergeTree('/clickhouse/tables/{shard}/xxx', '{replica}')，
+#  这要求：① 可用的 Keeper（协调服务）；② 定义好 {shard} / {replica} 宏。
+#
+#  本配置在同一个 Pod 内启用「内嵌 ClickHouse Keeper」，从而可以原样执行仓库
+#  DDL，不需要把 Replicated 引擎降级为单机引擎，保持与生产语义一致。
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: monitor-clickhouse-config
+  namespace: monitor
+  labels:
+    app.kubernetes.io/part-of: monitor
+    app.kubernetes.io/component: clickhouse
+data:
+  99-monitor.xml: |
+    <clickhouse>
+      <listen_host>0.0.0.0</listen_host>
+      <timezone>Asia/Shanghai</timezone>
+
+      <!-- 单节点内嵌 Keeper：满足 Replicated*MergeTree 的协调需求 -->
+      <keeper_server>
+        <tcp_port>9181</tcp_port>
+        <server_id>1</server_id>
+        <log_storage_path>/var/lib/clickhouse/coordination/log</log_storage_path>
+        <snapshot_storage_path>/var/lib/clickhouse/coordination/snapshots</snapshot_storage_path>
+        <coordination_settings>
+          <operation_timeout_ms>10000</operation_timeout_ms>
+          <session_timeout_ms>30000</session_timeout_ms>
+          <raft_logs_level>warning</raft_logs_level>
+        </coordination_settings>
+        <raft_configuration>
+          <server>
+            <id>1</id>
+            <hostname>localhost</hostname>
+            <port>9234</port>
+          </server>
+        </raft_configuration>
+      </keeper_server>
+
+      <zookeeper>
+        <node>
+          <host>localhost</host>
+          <port>9181</port>
+        </node>
+      </zookeeper>
+
+      <!-- DDL 中 '/clickhouse/tables/{shard}/...' 与 '{replica}' 由此展开 -->
+      <macros>
+        <shard>01</shard>
+        <replica>replica-01</replica>
+      </macros>
+
+      <!-- 容器内存上限的百分比，配合 Pod limits.memory 使用 -->
+      <max_server_memory_usage_to_ram_ratio>0.8</max_server_memory_usage_to_ram_ratio>
+
+      <logger>
+        <level>information</level>
+        <console>1</console>
+      </logger>
+    </clickhouse>
