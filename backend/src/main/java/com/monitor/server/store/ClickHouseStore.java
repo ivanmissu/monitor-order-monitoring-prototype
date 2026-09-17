@@ -22,6 +22,7 @@ import javax.sql.DataSource;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -384,7 +385,7 @@ public class ClickHouseStore implements MonitorStore {
                 WHERE order_id = ? AND dt >= toDate(?) AND dt <= toDate(?)
                 ORDER BY event_time, event_id
                 """, (rs, i) -> new OrderEventRow(0,
-                rs.getTimestamp("event_time").toInstant().atZone(TimeRange.ZONE).toOffsetDateTime(),
+                clickHouseDateTime(rs.getString("event_time")),
                 rs.getString("event_type"), null, null,
                 rs.getLong("amount"), parseProps(rs.getString("props")), null, false),
                 orderId, range.from().toString(), range.to().toString());
@@ -811,6 +812,16 @@ public class ClickHouseStore implements MonitorStore {
     }
 
     // ── 工具 ──────────────────────────────────────────────────────────────
+
+    /**
+     * ClickHouse JDBC V2 的 getTimestamp() 会把无时区 DateTime64 当 UTC，再由 JVM 转换一次，
+     * 导致 Asia/Shanghai 时间线回退 8 小时。按 ClickHouse 返回的本地字面量解析可保持业务时区。
+     */
+    private static OffsetDateTime clickHouseDateTime(String value) {
+        return LocalDateTime.parse(value.replace(' ', 'T'))
+                .atZone(TimeRange.ZONE)
+                .toOffsetDateTime();
+    }
 
     private static String mask(String hash) {
         if (hash == null || hash.length() < 8) {
