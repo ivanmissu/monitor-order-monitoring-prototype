@@ -123,6 +123,19 @@ INSERT INTO monitor.alert_silence
 
 -- ─────────────────────────── ⑧ ODS 历史事件（经 MV 上卷聚合层） ─────────────
 
+-- 客服工作台联调订单：接口文档、前端默认订单与 integration 数据保持同一契约。
+-- 时间使用 yesterday()，确保在默认 90 天查询窗口内；属性仅保留客服可展示白名单。
+INSERT INTO monitor.ods_order_event
+(event_id, event_type, event_time, ingest_time, order_id, trip_id, city_id, seat_type, biz_line, driver_id_hash, amount, props, version) VALUES
+    ('CS-DEMO-01', 'prepay_succeeded',     toDateTime64(yesterday() + INTERVAL 9 HOUR + INTERVAL 12 MINUTE + INTERVAL 8 SECOND, 3),   now(), 'CP20260903018462', 'T8842017763', 330100, 'exclusive', 'carpool', '8a7f921de', 8650, '{"pay_channel":"wx","note":"¥86.50 · 杭州市"}', 1),
+    ('CS-DEMO-02', 'order_pool_entered',   toDateTime64(yesterday() + INTERVAL 9 HOUR + INTERVAL 13 MINUTE + INTERVAL 41 SECOND, 3),  now(), 'CP20260903018462', 'T8842017763', 330100, 'exclusive', 'carpool', '8a7f921de', 0,    '{"passenger_estimate":2,"note":"独享 · 预计 2 人"}', 1),
+    ('CS-DEMO-03', 'order_grab_submitted', toDateTime64(yesterday() + INTERVAL 9 HOUR + INTERVAL 16 MINUTE + INTERVAL 20 SECOND, 3),  now(), 'CP20260903018462', 'T8842017763', 330100, 'exclusive', 'carpool', '8a7f921de', 0,    '{"candidate_drivers":8,"note":"候选司机 8"}', 1),
+    ('CS-DEMO-04', 'order_grab_won',       toDateTime64(yesterday() + INTERVAL 9 HOUR + INTERVAL 16 MINUTE + INTERVAL 22 SECOND, 3),  now(), 'CP20260903018462', 'T8842017763', 330100, 'exclusive', 'carpool', '8a7f921de', 0,    '{"match_cost_ms":2100,"note":"耗时 2.1s"}', 1),
+    ('CS-DEMO-05', 'passenger_confirmed',  toDateTime64(yesterday() + INTERVAL 9 HOUR + INTERVAL 18 MINUTE + INTERVAL 4 SECOND, 3),   now(), 'CP20260903018462', 'T8842017763', 330100, 'exclusive', 'carpool', '8a7f921de', 0,    '{"confirm_mode":"manual","note":"手动确认"}', 1),
+    ('CS-DEMO-06', 'passenger_boarded',    toDateTime64(yesterday() + INTERVAL 10 HOUR + INTERVAL 2 MINUTE + INTERVAL 19 SECOND, 3),  now(), 'CP20260903018462', 'T8842017763', 330100, 'exclusive', 'carpool', '8a7f921de', 0,    '{"wait_sec":261,"note":"等待 4m 21s"}', 1),
+    ('CS-DEMO-07', 'order_delivered',      toDateTime64(yesterday() + INTERVAL 11 HOUR + INTERVAL 17 MINUTE + INTERVAL 52 SECOND, 3), now(), 'CP20260903018462', 'T8842017763', 330100, 'exclusive', 'carpool', '8a7f921de', 0,    '{"trip_duration_sec":4533,"note":"履约 75m 33s"}', 1),
+    ('CS-DEMO-08', 'settlement_credited',  toDateTime64(yesterday() + INTERVAL 11 HOUR + INTERVAL 18 MINUTE + INTERVAL 14 SECOND, 3), now(), 'CP20260903018462', 'T8842017763', 330100, 'exclusive', 'carpool', '8a7f921de', 7240, '{"note":"司机收入 ¥72.40"}', 1);
+
 -- order_created（日占比 0.1）
 WITH toUInt32(${eventsPerDay} * 0.1) AS cpd
 INSERT INTO monitor.ods_order_event

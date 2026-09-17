@@ -416,6 +416,12 @@ export interface OrderView {
   privacy_note: string;
 }
 
+/** 客服工作台首屏聚合契约：快照与时间线必须来自同一次实时查询。 */
+export interface OrderWorkbench {
+  order: OrderView;
+  timeline: Timeline;
+}
+
 export interface PipelineComponent {
   component: string;
   status: string;
@@ -493,10 +499,14 @@ export const api = {
     apiRequest<RiskCity[]>("/quality/risk-cities", { role: "dash", signal }),
 
   // §08 客服工作台
+  orderWorkbench: (orderId: string, signal?: AbortSignal) =>
+    apiRequest<OrderWorkbench>(`/orders/${encodeURIComponent(orderId)}/workbench`, { role: "cs", signal }),
   order: (orderId: string, signal?: AbortSignal) =>
     apiRequest<OrderView>(`/orders/${encodeURIComponent(orderId)}`, { role: "cs", signal }),
   orderEvents: (orderId: string, signal?: AbortSignal) =>
     apiRequest<Timeline>(`/orders/${encodeURIComponent(orderId)}/events`, { role: "cs", signal }),
+  orderEventsExportUrl: (orderId: string) =>
+    buildUrl(`/orders/${encodeURIComponent(orderId)}/events.ndjson`, { _monitor_role: "cs" }),
 
   // §09 风控观测
   riskSummary: (biz?: BizLine, signal?: AbortSignal) =>

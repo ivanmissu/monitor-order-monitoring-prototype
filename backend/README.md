@@ -1,7 +1,7 @@
 # monitor-server
 
 > Monitor 旁路式订单业务监控服务端 · **Java 25 + Spring Boot 4.1.1**
-> 实现文档：`../docs/monitor-api.md`（53 端点 / 11 接口域）
+> 实现文档：`../docs/monitor-api.md`（54 端点 / 11 接口域）
 
 ---
 

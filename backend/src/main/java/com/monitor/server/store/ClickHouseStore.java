@@ -349,22 +349,27 @@ public class ClickHouseStore implements MonitorStore {
     @Override
     public Optional<OrderSnapshot> order(String orderId) {
         List<OrderSnapshot> rows = odsJdbc.query("""
-                SELECT order_id, any(biz_line) AS biz_line, any(city_id) AS city_id,
-                       any(seat_type) AS seat_type, max(amount) AS amount,
-                       any(driver_id_hash) AS driver_hash, any(trip_id) AS trip_id,
-                       min(dt) AS dt, count() AS event_cnt,
-                       countIf(event_type = 'order_delivered') AS delivered
-                FROM ods_order_event
-                WHERE order_id = ? AND ods_order_event.dt >= today() - 90
-                GROUP BY order_id
+                SELECT order_id, biz_line, city_id,
+                       dictGet('dim_city', 'name', toUInt64(city_id)) AS city_name,
+                       seat_type, amount, driver_hash, trip_id, order_dt, event_cnt, delivered
+                FROM (
+                    SELECT order_id, any(biz_line) AS biz_line, any(city_id) AS city_id,
+                           any(seat_type) AS seat_type, max(amount) AS amount,
+                           any(driver_id_hash) AS driver_hash, any(trip_id) AS trip_id,
+                           min(dt) AS order_dt, count() AS event_cnt,
+                           countIf(event_type = 'order_delivered') AS delivered
+                    FROM ods_order_event
+                    WHERE order_id = ? AND ods_order_event.dt >= today() - 90
+                    GROUP BY order_id
+                )
                 """, (rs, i) -> {
             int cnt = rs.getInt("event_cnt");
             boolean delivered = rs.getInt("delivered") > 0;
             return new OrderSnapshot(rs.getString("order_id"), rs.getString("biz_line"),
                     delivered ? "completed" : "in_progress", delivered ? "已完成" : "进行中",
-                    rs.getLong("city_id"), null, rs.getString("seat_type"), rs.getLong("amount"),
+                    rs.getLong("city_id"), rs.getString("city_name"), rs.getString("seat_type"), rs.getLong("amount"),
                     mask(rs.getString("driver_hash")), rs.getString("trip_id"),
-                    rs.getDate("dt").toLocalDate(), cnt,
+                    rs.getDate("order_dt").toLocalDate(), cnt,
                     cnt >= 8 ? "complete" : "gap", 8, List.of());
         }, orderId);
         return rows.stream().findFirst();

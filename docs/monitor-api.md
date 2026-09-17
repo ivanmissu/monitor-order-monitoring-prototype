@@ -32,7 +32,7 @@ X-Monitor-Dict-Version: 2026.09
 | 业务线切换器（6 值） | `GET /api/v1/dict/biz-lines` | 启动一次，缓存 1h |
 | KPI 指标带 / 数值卡 | `GET /api/v1/overview/summary` | 20s + ETag |
 | 告警列表 + 认领 | `GET /api/v1/alerts` · `POST /api/v1/alerts/{id}/ack` | SSE 推送，兜底 30s 轮询 |
-| 订单事件时间线 | `GET /api/v1/orders/{id}/events` | 手动查询，禁止轮询 |
+| 客服订单快照 + 事件时间线 | `GET /api/v1/orders/{id}/workbench` | 手动查询，禁止轮询 |
 | 链路健康红绿灯 | `GET /api/v1/overview/link-health` | 15s 轮询 |
 | 指标库列表 / 详情 | `GET /api/v1/dict/metrics(/{metric_id})` | 10min 缓存 |
 | 集成样例 / 事件契约 | `GET /api/v1/dict/event-types` | 启动一次 |
@@ -267,14 +267,51 @@ X-Monitor-Dict-Version: 2026.09
 
 ---
 
-## 08 客服明细查询（4）
+## 08 客服明细查询（5）
+
+客服工作台禁止自动轮询，点击“查询订单”后发起一次请求。页面首选聚合接口，快照与时间线必须来自同一权限上下文和查询窗口；其余接口用于独立查询、批处理和审计导出。
 
 | 方法 | 路径 | 用途 | 约束 |
 |---|---|---|---|
-| GET | `/api/v1/orders/{order_id}` | 订单维度快照 + 事件完整性判定 | 按前缀路由业务线 |
-| GET | `/api/v1/orders/{order_id}/events` | 事件时间线 | 窗口 ≤ 90 天 |
+| GET | `/api/v1/orders/{order_id}/workbench` | 客服工作台首屏：订单快照 + 完整事件时间线 | **页面主接口**；窗口 ≤ 90 天 |
+| GET | `/api/v1/orders/{order_id}` | 订单维度快照 + 事件完整性判定 | 按订单数据中的业务线与城市鉴权 |
+| GET | `/api/v1/orders/{order_id}/events` | 事件时间线 | 窗口 ≤ 90 天；与快照执行相同城市鉴权 |
 | POST | `/api/v1/orders/lookup` | 批量查询（≤20 单） | 逐条返回，不整体失败 |
 | GET | `/api/v1/orders/{order_id}/events.ndjson` | 原始事件导出 | 写审计日志 |
+
+`GET /orders/{id}/workbench` 请求参数：
+
+| 参数 | 位置 | 必填 | 说明 |
+|---|---|---:|---|
+| `order_id` | path | 是 | 1–64 字符，服务端按实际订单数据鉴权 |
+| `from` / `to` | query | 否 | `YYYY-MM-DD`；缺省近 90 天，跨度超过 90 天返回 `40002` |
+| `domain` | query | 否 | `supply/match/fulfill/fund/risk/exp/quality` |
+
+响应 `data.order` 对应左侧订单快照，`data.timeline` 对应右侧事件时间线：
+
+```json
+{
+  "code": 0,
+  "data": {
+    "order": {
+      "order_id": "CP20260903018462", "biz_line": "carpool",
+      "status": "completed", "status_label": "已完成",
+      "city_id": 330100, "city_name": "杭州", "seat_type": "exclusive",
+      "amount_fen": 8650, "driver_id_hash_masked": "8a7f...21de",
+      "trip_id": "T8842017763", "dt": "2026-09-16", "event_count": 8,
+      "completeness": { "state": "complete", "expected_nodes": 8, "present_nodes": 8, "missing": [] },
+      "risk_flags": [], "privacy_note": "仅展示脱敏后的维度快照；原始标识和非白名单属性不返回"
+    },
+    "timeline": {
+      "order_id": "CP20260903018462", "duration_sec": 7566,
+      "started_at": "2026-09-16T09:12:08+08:00", "ended_at": "2026-09-16T11:18:14+08:00",
+      "query_cost_ms": 12, "events": [], "missing": []
+    }
+  }
+}
+```
+
+错误约定：订单不存在或过滤后无事件返回 `40401`；参数非法/窗口超限返回 `40002`；Token 无 `ods` scope 返回 `40301`。前端不得在错误时展示静态订单，应保留明确错误态。
 
 `GET /orders/{id}/events`（SLO **P99 < 3s**，走 `bloom_filter(order_id)` + 分区裁剪，独立 query profile 限内存 6GB）：
 

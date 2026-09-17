@@ -509,6 +509,36 @@ metric=core.delivery_rate&biz_line=all&grain=1h&from=2026-09-03&to=2026-09-03" \
     lead: "直读 ODS 明细，走 bloom_filter 索引 + 强制时间窗，资源隔离避免拖垮集群。SLO：P99 < 3s。",
     endpoints: [
       {
+        method: "GET", path: "/api/v1/orders/{order_id}/workbench", title: "客服工作台首屏聚合", role: "cs_detail",
+        desc: "页面主接口；在同一权限上下文与查询窗口中返回订单快照和事件时间线，避免双请求产生快照/时间线混合状态。仅在点击查询时调用，禁止轮询。",
+        params: [
+          { n: "order_id", in: "path", t: "string", r: true, d: "订单 ID，长度 1–64 字符" },
+          { n: "from / to", in: "query", t: "date", d: "缺省近 90 天；跨度 > 90 天返回 40002" },
+          { n: "domain", in: "query", t: "enum", d: "可选：supply/match/fulfill/fund/risk/exp/quality" },
+        ],
+        resp: `{
+  "code": 0,
+  "data": {
+    "order": {
+      "order_id": "CP20260903018462", "biz_line": "carpool", "status": "completed", "status_label": "已完成",
+      "city_id": 330100, "city_name": "杭州", "seat_type": "exclusive", "amount_fen": 8650,
+      "driver_id_hash_masked": "8a7f...21de", "trip_id": "T8842017763", "dt": "2026-09-16", "event_count": 8,
+      "completeness": { "state": "complete", "expected_nodes": 8, "present_nodes": 8, "missing": [] },
+      "risk_flags": [], "privacy_note": "仅展示脱敏后的维度快照；原始标识和非白名单属性不返回"
+    },
+    "timeline": {
+      "order_id": "CP20260903018462", "duration_sec": 7566,
+      "started_at": "2026-09-16T09:12:08+08:00", "ended_at": "2026-09-16T11:18:14+08:00",
+      "query_cost_ms": 12,
+      "events": [{ "seq": 1, "event_type": "prepay_succeeded", "label": "乘客预付成功", "note": "¥86.50 · 杭州市" }],
+      "missing": []
+    }
+  }
+}`,
+        note: "40401=订单或过滤结果不存在；40002=参数/窗口非法；40301=无 ODS 或城市权限。前端错误时不得静默回退静态订单。",
+        perf: "快照聚合 + bloom_filter(order_id) 时间线查询；P99 < 3s。",
+      },
+      {
         method: "GET", path: "/api/v1/orders/{order_id}", title: "订单维度快照", role: "cs_detail",
         desc: "订单卡片头部数据：业务线、城市、座型、金额、脱敏司机标识、归属日、事件完整性判定。",
         params: [{ n: "order_id", in: "path", t: "string", r: true, d: "乘客单 ID，支持 CP/DR/TF/DJ/AP 前缀，服务端按前缀路由业务线" }],
