@@ -3,7 +3,6 @@ package com.monitor.sdk.agent;
 import com.monitor.sdk.AsyncHttpEventReporter;
 import com.monitor.sdk.EventReporter;
 import com.monitor.sdk.MonitorEvent;
-import com.monitor.sdk.ReporterConfig;
 import com.monitor.sdk.annotation.MonitorMetricEvent;
 
 import java.lang.reflect.Method;
@@ -23,7 +22,7 @@ public final class AgentRuntime {
 
     static void initialize(AgentConfig config) {
         reporter = new AsyncHttpEventReporter(config.getReporterConfig());
-        defaultBizLine = config.getDefaultBizLine();
+        defaultBizLine = config.getBizLine();
     }
 
     static void close() {
@@ -44,43 +43,87 @@ public final class AgentRuntime {
             if (active == null) {
                 return;
             }
-            MonitorEvent.Builder event = MonitorEvent.builder(spec.eventType())
-                    .orderId(asRequiredText(argument(arguments, spec.orderIdArg()), "orderIdArg"))
-                    .bizLine(firstText(spec.bizLine(), defaultBizLine, "bizLine"))
-                    .cityId(asLong(argument(arguments, spec.cityIdArg()), "cityIdArg"));
 
-            Object tripId = argument(arguments, spec.tripIdArg());
+            // bizLine: 优先使用注解标注值，缺省时自动使用项目中配置文件设置的全局 bizLine
+            String bizLine = firstText(spec.bizLine(), defaultBizLine, "bizLine");
+
+            // orderId: 优先解析 orderIdPath，其次 orderIdArg
+            Object orderId = resolveValue(arguments, method, spec.orderIdPath(), spec.orderIdArg());
+
+            // cityId: 优先解析 cityIdPath，其次 cityIdArg
+            Object cityId = resolveValue(arguments, method, spec.cityIdPath(), spec.cityIdArg());
+
+            MonitorEvent.Builder event = MonitorEvent.builder(spec.eventType())
+                    .orderId(asRequiredText(orderId, "orderId"))
+                    .bizLine(bizLine)
+                    .cityId(asLong(cityId, "cityId"));
+
+            Object tripId = resolveValue(arguments, method, spec.tripIdPath(), spec.tripIdArg());
             if (tripId != null) {
                 event.tripId(String.valueOf(tripId));
             }
-            Object seatType = argument(arguments, spec.seatTypeArg());
+
+            Object seatType = resolveValue(arguments, method, spec.seatTypePath(), spec.seatTypeArg());
             if (seatType != null) {
                 event.seatType(String.valueOf(seatType));
             }
-            Object driverId = argument(arguments, spec.driverIdArg());
+
+            Object driverId = resolveValue(arguments, method, spec.driverIdPath(), spec.driverIdArg());
             if (driverId != null) {
                 event.hashedDriverId(String.valueOf(driverId));
             }
-            Object amount = argument(arguments, spec.amountFenArg());
+
+            Object amount = resolveValue(arguments, method, spec.amountFenPath(), spec.amountFenArg());
             if (amount != null) {
-                event.amountFen(asLong(amount, "amountFenArg"));
+                event.amountFen(asLong(amount, "amountFen"));
             }
-            Object eventTime = argument(arguments, spec.eventTimeArg());
+
+            Object eventTime = resolveValue(arguments, method, spec.eventTimePath(), spec.eventTimeArg());
             if (eventTime != null) {
-                event.eventTime(asInstant(eventTime, "eventTimeArg"));
+                event.eventTime(asInstant(eventTime, "eventTime"));
             }
+
             String[] propNames = spec.propNames();
+            String[] propPaths = spec.propPaths();
             int[] propIndexes = spec.propArgIndexes();
-            if (propNames.length != propIndexes.length) {
-                throw new IllegalArgumentException("propNames and propArgIndexes must have the same length");
+
+            if (propPaths != null && propPaths.length > 0) {
+                if (propNames.length != propPaths.length) {
+                    throw new IllegalArgumentException("propNames and propPaths must have the same length");
+                }
+                for (int i = 0; i < propNames.length; i++) {
+                    int fallbackIdx = (propIndexes != null && i < propIndexes.length) ? propIndexes[i] : -1;
+                    Object val = resolveValue(arguments, method, propPaths[i], fallbackIdx);
+                    if (val != null) {
+                        event.prop(propNames[i], val);
+                    }
+                }
+            } else if (propIndexes != null && propIndexes.length > 0) {
+                if (propNames.length != propIndexes.length) {
+                    throw new IllegalArgumentException("propNames and propArgIndexes must have the same length");
+                }
+                for (int i = 0; i < propNames.length; i++) {
+                    Object val = argument(arguments, propIndexes[i]);
+                    if (val != null) {
+                        event.prop(propNames[i], val);
+                    }
+                }
             }
-            for (int i = 0; i < propNames.length; i++) {
-                event.prop(propNames[i], argument(arguments, propIndexes[i]));
-            }
+
             active.report(event.build());
         } catch (Throwable ignored) {
             // Agent 是旁路能力：任何映射、序列化和队列错误均不得改变业务调用结果。
         }
+    }
+
+    private static Object resolveValue(Object[] arguments, Method method, String path, int fallbackArgIndex) {
+        if (path != null && !path.trim().isEmpty()) {
+            return PropertyExtractor.extract(arguments, method, path);
+        }
+        if (fallbackArgIndex >= 0) {
+            return argument(arguments, fallbackArgIndex);
+        }
+        return null;
     }
 
     private static Object argument(Object[] arguments, int index) {
@@ -97,15 +140,15 @@ public final class AgentRuntime {
         if (value == null || String.valueOf(value).trim().isEmpty()) {
             throw new IllegalArgumentException(name + " must resolve to a non-blank value");
         }
-        return String.valueOf(value);
+        return String.valueOf(value).trim();
     }
 
     private static String firstText(String preferred, String fallback, String name) {
         if (preferred != null && !preferred.trim().isEmpty()) {
-            return preferred;
+            return preferred.trim();
         }
         if (fallback != null && !fallback.trim().isEmpty()) {
-            return fallback;
+            return fallback.trim();
         }
         throw new IllegalArgumentException(name + " is required either on annotation or agent config");
     }
@@ -116,7 +159,7 @@ public final class AgentRuntime {
         }
         if (value != null) {
             try {
-                return Long.parseLong(String.valueOf(value));
+                return Long.parseLong(String.valueOf(value).trim());
             } catch (NumberFormatException ignored) {
                 // fall through to the explicit contract error below
             }
@@ -141,7 +184,7 @@ public final class AgentRuntime {
             return Instant.ofEpochMilli(((Number) value).longValue());
         }
         if (value instanceof CharSequence) {
-            return Instant.parse(value.toString());
+            return Instant.parse(value.toString().trim());
         }
         throw new IllegalArgumentException(name + " must be Instant, OffsetDateTime, Date, epoch millis, or ISO-8601 string");
     }

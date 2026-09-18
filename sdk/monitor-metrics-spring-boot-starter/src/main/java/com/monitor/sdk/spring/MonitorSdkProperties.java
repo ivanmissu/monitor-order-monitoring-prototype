@@ -12,6 +12,8 @@ public class MonitorSdkProperties {
 
     /** 显式开启，默认关闭，避免应用升级 Starter 后意外发出遥测数据。 */
     private boolean enabled = false;
+    /** 业务线标识，例如 driver、transfer、carpool、designated、airport 等。 */
+    private String bizLine;
     /** 完整上报地址，例如 https://monitor.example.com/api/v1/ingest/events。 */
     private String endpoint;
     /** 仅限 INGEST 权限的短期 token；推荐通过环境变量注入。 */
@@ -48,6 +50,8 @@ public class MonitorSdkProperties {
 
     public boolean isEnabled() { return enabled; }
     public void setEnabled(boolean enabled) { this.enabled = enabled; }
+    public String getBizLine() { return bizLine; }
+    public void setBizLine(String bizLine) { this.bizLine = bizLine; }
     public String getEndpoint() { return endpoint; }
     public void setEndpoint(String endpoint) { this.endpoint = endpoint; }
     public String getToken() { return token; }
