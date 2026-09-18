@@ -22,6 +22,7 @@ management:
 monitor:
   sdk:
     enabled: ${MONITOR_SDK_ENABLED:true}
+    biz-line: ${MONITOR_SDK_BIZ_LINE:driver}
     endpoint: ${MONITOR_SDK_ENDPOINT:http://localhost:8080/api/v1/ingest/events}
     token: ${MONITOR_SDK_TOKEN:ingest-token}
     batch-size: ${MONITOR_SDK_BATCH_SIZE:20}

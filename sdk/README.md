@@ -2,13 +2,13 @@
 
 本目录提供与本仓库服务端 `POST /api/v1/ingest/events` **完全对齐**的 Java SDK。平台的指标由已登记的业务事件聚合产生：SDK 上报的是标准化的**指标事件**，不是绕过字典直接写入任意 `counter/gauge` 名称。这样可继续使用平台的事件幂等、维度快照、PII 检测、事件质量与指标口径治理能力。
 
-提供两种接入方式：
+提供三种接入方式：
 
 | 模块 / 产物 | 适用场景 | Java 基线 |
 | --- | --- | --- |
-| `monitor-metrics-sdk-core` | 非 Spring 项目、手动控制上报 | Java 8+ |
-| `monitor-metrics-spring-boot-starter` | Spring Boot 业务服务，支持事务提交后上报 | Spring Boot 3/4（Java 17+） |
-| `monitor-metrics-java-agent` | 不希望引入 Starter，由 Agent 拦截标注方法上报 | Java 8+ |
+| `monitor-metrics-spring-boot-starter` | Spring Boot 业务服务，支持事务提交后自动异步上报 | Spring Boot 3/4（Java 17+） |
+| `monitor-metrics-java-agent` | 无侵入接入，通过 `@MonitorMetricEvent` 拦截业务方法上报，支持实体类/Map参数解析与全局 bizLine 配置 | Java 8+ |
+| `monitor-metrics-sdk-core` | 非 Spring 项目、编程式调用、手动控制上报管线 | Java 8+ |
 
 ## 事件契约与保障
 
@@ -66,6 +66,7 @@ Starter **默认关闭**，必须显式启用。Token 仅需平台 `INGEST` 权�
 monitor:
   sdk:
     enabled: true
+    biz-line: driver # 项目所属业务线（例如 driver、transfer、carpool 等）
     endpoint: ${MONITOR_INGEST_ENDPOINT:http://monitor-server:8080/api/v1/ingest/events}
     token: ${MONITOR_INGEST_TOKEN}
     batch-size: 500
@@ -118,26 +119,11 @@ public class OrderService {
 
 应用关闭时 Spring 会调用 reporter 的 `close()`，并在 `shutdown-timeout` 内尽力 flush。若需要替换 HTTP 实现或接入本地观测，可自行声明 `EventReporter` Bean，Starter 不会覆盖它。
 
-### 非 Spring 使用 Core（可选）
-
-```java
-ReporterConfig config = ReporterConfig.builder()
-        .endpoint("https://monitor.example.com/api/v1/ingest/events")
-        .token(System.getenv("MONITOR_INGEST_TOKEN"))
-        .build();
-try (EventReporter reporter = new AsyncHttpEventReporter(config)) {
-    reporter.report(MonitorEvent.builder("order_created")
-            .orderId("ORDER-1001").bizLine("driver").cityId(440300L)
-            .prop("channel", "app").build());
-    reporter.flush(Duration.ofSeconds(5));
-}
-```
-
 ---
 
 ## 方式二：Java Agent
 
-Agent 用 Byte Buddy 拦截带 `@MonitorMetricEvent` 的业务方法；不会扫描所有方法或生成高基数的自动指标。这样无需引入 Spring Starter，也能在非 Spring 服务中统一上报。为保障事件契约，标注处仍需要声明事件类型和从哪个方法参数取得维度。
+Agent 使用 Byte Buddy 拦截带有 `@MonitorMetricEvent` 的业务方法；不会扫描所有方法或生成高基数的自动指标。这样无需在业务代码中引入复杂的上报逻辑，也能统一上报。
 
 ### 1. 构建并保留两个 JAR
 
@@ -148,7 +134,7 @@ mvn -f sdk/pom.xml clean package
 运行时需要：
 
 1. Agent 包：`sdk/monitor-metrics-java-agent/target/monitor-metrics-java-agent-1.0.0-SNAPSHOT.jar`（已打包 Byte Buddy）；
-2. Core 包：`monitor-metrics-sdk-core`（仅用于让业务代码编译 `@MonitorMetricEvent` 注解；一般作为普通 Maven 依赖引入）。
+2. Core 包：`monitor-metrics-sdk-core`（仅用于让业务代码编译 `@MonitorMetricEvent` 注解；作为普通 Maven 依赖引入）。
 
 ```xml
 <dependency>
@@ -158,9 +144,47 @@ mvn -f sdk/pom.xml clean package
 </dependency>
 ```
 
-### 2. 标注业务方法
+### 2. 全局业务线配置（bizLine）
 
-所有 `*Arg` 都是**方法参数的 0 基下标**。以下例子在成功返回时，把参数 0、1、2、3、4、5 映射到订单、城市、金额、司机、完成时间和 `trip_duration_sec`。`driverIdArg` 会自动 SHA-256 脱敏。
+每个微服务/业务工程通常属于独立的业务线（如 `driver`、`transfer`、`carpool` 等）。
+**无需在每个 `@MonitorMetricEvent` 注解中重复标注 `bizLine`**，只需在工程配置文件、系统属性或环境变量中统一配置一次即可：
+
+- **`application.yml` / `application.properties`：**
+  ```yaml
+  monitor:
+    sdk:
+      biz-line: driver
+      endpoint: http://monitor-server:8080/api/v1/ingest/events
+      token: ***
+  ```
+- **`monitor-sdk.properties`：**
+  ```properties
+  monitor.sdk.biz-line=driver
+  monitor.sdk.endpoint=http://monitor-server:8080/api/v1/ingest/events
+  monitor.sdk.token=***
+  ```
+- **JVM 启动参数：** `-Dmonitor.sdk.biz-line=driver`
+- **环境变量：** `export MONITOR_SDK_BIZ_LINE=driver`
+
+> 注解上的 `bizLine` 默认为空字符串 `""`，会自动回退使用项目全局配置。若某个特殊方法确实属于其他业务线，可在注解上显式声明 `bizLine = "other_line"` 覆盖全局配置。
+
+### 3. 标注业务方法与参数字段支持
+
+实际业务开发中，方法入参通常是**实体类（POJO / DTO / Record）**或 **`Map`**，而不是多个基础类型平铺传入。
+`@MonitorMetricEvent` 提供了以 `*Path` 结尾的字段支持灵活的对象属性与 Map 键提取，同时也保留了以 `*Arg` 结尾的参数下标字段：
+
+| 注解字段（Path 模式） | 注解字段（Arg 下标模式） | 说明 |
+| --- | --- | --- |
+| `orderIdPath` | `orderIdArg` | 订单 ID（必填），支持 Getter、Record 访问器、Map Key、嵌套路径（如 `orderId`、`0.orderId`、`0.order_id`） |
+| `cityIdPath` | `cityIdArg` | 城市 ID（必填） |
+| `amountFenPath` | `amountFenArg` | 金额（分） |
+| `tripIdPath` | `tripIdArg` | 行程 ID |
+| `seatTypePath` | `seatTypeArg` | 车型/座席类型 |
+| `driverIdPath` | `driverIdArg` | 司机 ID（提取后自动进行 SHA-256 脱敏） |
+| `eventTimePath` | `eventTimeArg` | 事件时间（支持 Instant、OffsetDateTime、Date、时间戳毫秒或 ISO-8601 字符串；缺省为当前时刻） |
+| `propPaths` | `propArgIndexes` | 扩展属性提取路径列表，与 `propNames` 数量一致 |
+
+#### 示例 1：实体类 / DTO / Record 入参（推荐）
 
 ```java
 import com.monitor.sdk.annotation.MonitorMetricEvent;
@@ -169,7 +193,54 @@ public class DeliveryApplicationService {
 
     @MonitorMetricEvent(
         eventType = "order_delivered",
-        bizLine = "driver",
+        orderIdPath = "orderId",
+        cityIdPath = "cityId",
+        amountFenPath = "amountFen",
+        driverIdPath = "driverId",
+        eventTimePath = "deliveredAt",
+        propNames = {"trip_duration_sec"},
+        propPaths = {"tripDurationSec"}
+    )
+    public void complete(DeliveryOrderDTO dto) {
+        // 原有业务逻辑，无需侵入上报代码
+        // bizLine 自动取自全局配置文件中设置的 monitor.sdk.biz-line
+    }
+}
+```
+
+#### 示例 2：Map 入参或多级嵌套对象
+
+```java
+import com.monitor.sdk.annotation.MonitorMetricEvent;
+import java.util.Map;
+
+public class OrderCallbackService {
+
+    @MonitorMetricEvent(
+        eventType = "order_delivered",
+        orderIdPath = "0.order_id",
+        cityIdPath = "0.city_id",
+        amountFenPath = "0.amount_fen",
+        driverIdPath = "0.driver_id",
+        propNames = {"trip_duration_sec", "channel"},
+        propPaths = {"0.trip_duration", "0.meta.channel"}
+    )
+    public void handleCallback(Map<String, Object> params) {
+        // 支持下划线、驼峰与嵌套 Map 解析
+    }
+}
+```
+
+#### 示例 3：多基础类型参数入参
+
+```java
+import com.monitor.sdk.annotation.MonitorMetricEvent;
+import java.time.Instant;
+
+public class LegacyOrderService {
+
+    @MonitorMetricEvent(
+        eventType = "order_delivered",
         orderIdArg = 0,
         cityIdArg = 1,
         amountFenArg = 2,
@@ -180,24 +251,19 @@ public class DeliveryApplicationService {
     )
     public void complete(String orderId, long cityId, long amountFen,
                          String driverId, Instant deliveredAt, long tripDurationSec) {
-        // 原有业务代码无需调用 reporter
+        // 使用 0 基参数下标匹配基础类型参数
     }
 }
 ```
 
-- `orderIdArg`、`cityIdArg` 必填；`bizLine` 可以写在注解中，也可以使用 Agent 的 `defaultBizLine`。
-- `eventTimeArg` 可接受 `Instant`、`OffsetDateTime`、`ZonedDateTime`、`java.util.Date`、epoch milliseconds 或 ISO-8601 字符串；缺省时使用方法结束时刻。
-- `propNames` 和 `propArgIndexes` 数量必须一致。props 必须是服务端当前事件字典的白名单字段。
-- 默认只有**成功返回**才上报。仅当某个已登记事件确实代表失败状态时，才设置 `reportOnThrowable = true`。
-
-### 3. 启动 JVM
+### 4. 启动 JVM
 
 优先经环境变量传递 token，避免 token 出现在进程命令行或日志中：
 
 ```bash
 export MONITOR_SDK_ENDPOINT='http://monitor-server:8080/api/v1/ingest/events'
 export MONITOR_SDK_TOKEN='*** INGEST token ***'
-export MONITOR_SDK_DEFAULT_BIZ_LINE='driver'  # 注解未配置 bizLine 时才需要
+export MONITOR_SDK_BIZ_LINE='driver'
 
 java \
   -javaagent:/opt/monitor/monitor-metrics-java-agent-1.0.0-SNAPSHOT.jar \
@@ -210,14 +276,49 @@ java \
 java \
   -Dmonitor.sdk.endpoint='http://monitor-server:8080/api/v1/ingest/events' \
   -Dmonitor.sdk.token="$MONITOR_SDK_TOKEN" \
+  -Dmonitor.sdk.biz-line='driver' \
   -javaagent:/opt/monitor/monitor-metrics-java-agent-1.0.0-SNAPSHOT.jar=\
 endpoint=http://monitor-server:8080/api/v1/ingest/events,batchSize=100,flushIntervalMs=1000 \
   -jar order-service.jar
 ```
 
-支持的 Agent key 为：`enabled`、`endpoint`、`token`、`batchSize`、`maxBatchBytes`、`flushIntervalMs`、`queueCapacity`、`maxRetries`、`connectTimeoutMs`、`requestTimeoutMs`、`userAgent`、`defaultBizLine`。对应环境变量使用大写蛇形，如 `MONITOR_SDK_MAX_RETRIES`。
+支持的配置项为：`enabled`、`bizLine`（或 `biz-line` / `defaultBizLine`）、`endpoint`、`token`、`batchSize`、`maxBatchBytes`、`flushIntervalMs`（支持 `2s`、`500ms`）、`queueCapacity`、`maxRetries`、`connectTimeoutMs`、`requestTimeoutMs`、`userAgent`、`config`（显式指定配置文件路径）。
 
 > Agent 配置、字段映射或网络异常都会被旁路隔离，绝不改变被标注业务方法的返回值或异常。Agent 启动失败只会向 stderr 输出 `[monitor-metrics-agent]` 提示，宿主 JVM 仍会继续启动。
+
+---
+
+## 方式三：SDK Core 原生编程式上报
+
+适用于非 Spring 环境、轻量脚本或希望对上报生命周期进行细粒度控制的场景。
+
+```java
+import com.monitor.sdk.AsyncHttpEventReporter;
+import com.monitor.sdk.EventReporter;
+import com.monitor.sdk.MonitorEvent;
+import com.monitor.sdk.ReporterConfig;
+import java.time.Duration;
+
+ReporterConfig config = ReporterConfig.builder()
+        .endpoint("https://monitor.example.com/api/v1/ingest/events")
+        .token(System.getenv("MONITOR_INGEST_TOKEN"))
+        .batchSize(200)
+        .flushInterval(Duration.ofSeconds(1))
+        .build();
+
+try (EventReporter reporter = new AsyncHttpEventReporter(config)) {
+    reporter.report(MonitorEvent.builder("order_created")
+            .orderId("ORDER-1001")
+            .bizLine("driver")
+            .cityId(440300L)
+            .amountFen(8650L)
+            .prop("channel", "app")
+            .build());
+
+    // 应用退出前尽力刷盘
+    reporter.flush(Duration.ofSeconds(5));
+}
+```
 
 ---
 
