@@ -14,6 +14,12 @@ flowchart LR
     Browser[浏览器] --> UI[React 前端] --> API
 ```
 
+## 界面预览
+
+| 值班哨：实时链路健康 × 活动告警 | 接口监控：上下游依赖异常率拓扑 |
+| --- | --- |
+| [![值班哨](docs/assets/screenshots/view-sentinel.png)](docs/assets/screenshots/view-sentinel.png) | [![接口监控](docs/assets/screenshots/view-tech.png)](docs/assets/screenshots/view-tech.png) |
+
 ---
 
 ## 快速开始
